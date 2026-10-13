@@ -1,0 +1,29 @@
+# 实时预警系统配置
+serverchan:
+  sendkey: ""               # 密钥不入库：本地放 alert_config.local.yaml，云端放 Secrets
+  daily_limit: 5            # Server酱免费额度（条/天），超出则记录并跳过
+
+scan:
+  intraday_times: ["10:05", "11:05", "14:05", "14:55"]   # 盘中扫描（HH:MM）
+  close_confirm: "15:15"     # 收盘确认批
+  daily_update: "16:00"      # 日线增量更新 + 快照重建
+
+events:
+  type: "A"                  # 只推 A 类上穿
+  strict: true               # 严格口径：现价 >= MA60 即触发
+  dedup_weekly: true         # 同一股票同一自然周内只推首次
+
+push:
+  max_stocks_per_msg: 30     # 单条消息最多列出的股票数
+  include_backtest: true     # 附回测参照
+
+jump:
+  scheme: "hexin://stock/{code6}"                     # 实测无法唤起，已弃用
+  web: "https://stockpage.10jqka.com.cn/{code6}/"     # 同花顺个股页（手动切周K）
+  # 周K图公网地址：填 https://cdn.jsdelivr.net/gh/<你的用户名>/<仓库名>
+  # 保留 USER/REPO 占位符时图表功能自动关闭
+  chart_base_url: "https://cdn.jsdelivr.net/gh/wpxzhl66-art/ma60-alert"
+
+mktcap_buckets:              # 流通市值档位（亿元，静态口径）
+  small_max: 200
+  large_min: 800

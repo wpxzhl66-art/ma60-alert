@@ -1,0 +1,116 @@
+# ============================================================
+# 全A股「60周线触及」事件研究 — 参数配置
+# 版本: v1.1.0   日期: 2026-10-13
+# 修改本文件后即可全流程重跑，无需改动代码
+# ============================================================
+
+project:
+  name: "60周线触及事件研究"
+  version: "1.1.0"
+
+# ---------- 样本期 ----------
+period:
+  start: "2010-01-01"
+  end: "today"          # 动态取当日
+
+# ---------- 股票池 ----------
+universe:
+  include_delisted: true      # baostock 覆盖退市股 → 生存者偏差可在数据层消除
+  exclude_st: false           # 用户口径：不剔除ST（改为用 isST 字段分层统计）
+  exclude_new: false          # 用户口径：不剔除次新（不足60周者天然无均线）
+  exclude_bse: false          # 用户口径：不剔除北交所
+  min_turnover: 0             # 流动性门槛（元），0 = 不设限
+  min_weeks_required: 60      # 计算MA60所需最少周数（计算前提，非人为剔除）
+
+# ---------- 均线 ----------
+moving_average:
+  ma_weeks: 60                # 主均线周期（周）
+  band_pct: 0.02              # 「触及」带宽 ±2%
+  compare_ma_weeks: [20, 30, 120]   # 横向对比的其他均线周期
+
+# ---------- 事件定义 ----------
+events:
+  type_a_cross_up: true       # 类型A：上穿突破
+  type_b_pullback: true       # 类型B：上方回踩触及
+  merge_types: false          # 两类是否合并统计（不合并）
+  dedup: false                # 事件去重开关（用户口径：不去重）
+  cooldown_weeks: 26          # 冷却期（仅对照分析使用）
+  price_field: "close"        # 判定用价格：周收盘价
+  min_weeks_required: 60
+
+# ---------- 评估窗口（交易日） ----------
+horizons:
+  days: [20, 40, 60, 120, 250]
+
+# ---------- 收益基准 ----------
+benchmarks:
+  absolute: true
+  hs300: true                 # 沪深300
+  industry: true              # 申万一级行业指数
+  # v1.0.1 修订：必须用 hfq。该源 qfq 为加法复权，2010年产生负价格；
+  # 默认口径（省略 --fq）等同于 qfq，同样不可用。
+  price_adjust: "hfq"
+
+# ---------- 取数与数据质量（v1.1.0） ----------
+data_quality:
+  # 周线数据周期不足 → 统一由日线合成周线（周收盘 = 该周最后一个交易日收盘）
+  weekly_from_daily: true
+  daily_period: "day"
+  # baostock 单次查询约 4000 条上限 → 按年分段取数
+  segment: "year"
+  # 单段最少条数校验阈值（低于此值视为取数失败并重试）
+  min_rows_per_segment: 200
+  # 非正价格视为复权口径异常，落库前拦截
+  reject_nonpositive_price: true
+  # 事件时点流通市值由 amount / (turn/100) 反推（避免前视偏差）
+  derive_float_mv_from_turn: true
+  # 并行取数：baostock session 非线程安全，须每进程独立登录
+  parallel_processes: 8
+
+# ---------- 分层规则 ----------
+stratify:
+  ma_slope:
+    enabled: true
+    lookback_weeks: 13
+    up_threshold: 0.01        # > +1% 为向上
+    down_threshold: -0.01     # < -1% 为向下
+  ma_alignment:
+    enabled: true
+    periods: [5, 10, 20, 60]  # 周线均线多头排列判定
+  market_regime:
+    enabled: true
+    index: "000300"           # 沪深300
+    ma_weeks: 40
+    # 牛市 = 指数在MA40上方 且 MA40向上；熊市 = 下方且向下；其余为震荡
+  market_cap:
+    enabled: true
+    metric: "negotiabale_mv"  # 流通市值（事件时点）
+    buckets: {large: 0.30, small: 0.30}   # 大盘Top30% / 小盘Bottom30%
+  sector:
+    enabled: true
+    standard: "sw_l1"         # 申万一级
+
+# ---------- 统计口径 ----------
+statistics:
+  confidence_level: 0.95
+  bootstrap_iterations: 2000
+  cluster_by: "stock"         # 按股票聚类，修正样本重叠导致的显著性虚高
+  metrics: [mean, median, std, win_rate, excess_win_rate, profit_loss_ratio,
+            quantiles, mfe, mae, max_drawdown]
+
+# ---------- 数据源（v1.1.0 定选）----------
+data_source:
+  primary: "baostock"          # 唯一主源：复权正确 + 覆盖退市股
+  secondary: "akshare"         # 仅用于取股票清单与指数成份
+  optional_check: "ifind"      # 可选第三方校验，非关键路径
+  cross_validation: true
+  baostock_adjustflag: "1"     # 1=后复权（唯一可信口径）
+  baostock_segment: "year"     # 单次约4000条上限，须按年分段
+  cache_dir: "data/"
+
+# ---------- 输出 ----------
+output:
+  html_report: true
+  excel_detail: true
+  python_script: true
+  output_dir: "output/"

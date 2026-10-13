@@ -1,0 +1,8 @@
+# 本地/临时产物不入库（charts/ 除外：云端工作流需要提交图表）
+config/alert_config.local.yaml
+data/
+output/
+__pycache__/
+*.pyc
+.workbuddy/
+nohup.out

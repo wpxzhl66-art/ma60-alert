@@ -1,0 +1,113 @@
+name: 60周线预警
+
+on:
+  schedule:
+    - cron: "5 2 * * 1-5"     # 北京 10:05 盘中扫描
+    - cron: "5 3 * * 1-5"     # 北京 11:05 盘中扫描
+    - cron: "5 6 * * 1-5"     # 北京 14:05 盘中扫描
+    - cron: "55 6 * * 1-5"    # 北京 14:55 尾盘扫描
+    - cron: "15 7 * * 1-5"    # 北京 15:15 收盘确认
+    - cron: "0 8 * * 1-5"     # 北京 16:00 数据更新
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "任务：scan | confirm | update | demo"
+        default: "demo"
+
+concurrency:
+  group: ma60-alert
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TZ: Asia/Shanghai
+      ALERT_SENDKEY: ${{ secrets.ALERT_SENDKEY }}
+      PYTHONPATH: ${{ github.workspace }}/src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+
+      - name: 交易日校验（非交易日自动跳过）
+        id: day
+        run: |
+          cd src
+          python -m alert.run_alert --is-trading-day || echo "skip=true" >> "$GITHUB_OUTPUT"
+
+      # ---------------- 盘中扫描 / 收盘确认 ----------------
+      - name: 扫描并生成图表
+        id: scan
+        if: >-
+          steps.day.outputs.skip != 'true' &&
+          (github.event_name == 'schedule' && github.event.schedule != '0 8 * * 1-5' ||
+           github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
+        run: |
+          cd src
+          MODE=scan
+          [ "${{ github.event.inputs.task }}" = "confirm" ] && MODE=confirm
+          python -m alert.run_alert --prepare --cloud --mode "$MODE"
+
+      - name: 提交图表
+        id: commit
+        if: steps.scan.conclusion == 'success'
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/
+          git diff --cached --quiet || git commit -m "charts $(TZ=Asia/Shanghai date +%F-%H%M)"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 推送（盘中模式无触发不推送）
+        if: steps.scan.conclusion == 'success'
+        run: |
+          cd src
+          python -m alert.run_alert --notify --sha "${{ steps.commit.outputs.sha }}"
+
+      # ---------------- 每日数据更新 ----------------
+      - name: 更新数据仓
+        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5' || github.event.inputs.task == 'update')
+        run: |
+          cd src
+          python -m alert.run_alert --update-cloud
+
+      - name: 提交数据仓
+        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5' || github.event.inputs.task == 'update')
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add store/
+          git diff --cached --quiet || git commit -m "store $(TZ=Asia/Shanghai date +%F)"
+          git push
+
+      # ---------------- 手动演示（不推送） ----------------
+      - name: 演示运行
+        if: github.event.inputs.task == 'demo'
+        run: |
+          cd src
+          python -m alert.run_alert --prepare --cloud --demo
+
+      - name: 上传演示产物
+        if: github.event.inputs.task == 'demo'
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-output
+          path: |
+            output/alert/
+            charts/
