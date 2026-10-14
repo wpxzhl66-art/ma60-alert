@@ -10,6 +10,9 @@
   const REMOTE = 'https://raw.githubusercontent.com/' + REPO + '/main/dashboard';
   const QIMG = 'https://raw.githubusercontent.com/' + REPO + '/main/charts';
 
+  // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
+  const APP_VERSION = 'v1.3.1';
+
   const S = {
     data: null,        // data.json
     static: null,      // static.json
@@ -249,23 +252,25 @@
     // 列表
     const list = $('trigList');
     list.innerHTML = '';
-    $('trigHint').textContent = rows.length ? '点击查看周 K 与买卖点' : '';
+    $('trigHint').textContent = rows.length
+      ? '共 ' + rows.length + ' 只 · 点击查看周 K 与买卖点' : '';
     if (!rows.length) {
       list.appendChild(el('div', 'empty',
         '<div class="big">◌</div>当日暂无标的触及 60 周线。<br>盘中扫描时刻：10:05 / 11:05 / 14:05 / 14:55'));
       $('trigNote').textContent = '';
       return;
     }
-    rows.forEach((r) => list.appendChild(trigRow(r)));
+    rows.forEach((r, i) => list.appendChild(trigRow(r, i)));
     $('trigNote').innerHTML =
       '口径：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
       '「偏离」＝ 现价相对 60 周线的乖离；「量比」＝ 今日成交额 / 近 20 日均成交额。';
   }
 
-  function trigRow(r) {
+  function trigRow(r, i) {
     const row = el('div', 'row tap');
     const devCls = r.dev_pct > 0 ? 'up' : 'down';
     row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
       '<div class="grow">' +
         '<div class="t1">' + esc(r.name) + ' <span class="tag">' + esc(r.industry) + '</span></div>' +
         '<div class="t2"><span class="code">' + esc(r.code.replace('.', '')) + '</span>' +
@@ -286,18 +291,61 @@
   function renderSystem() {
     const d = S.data;
     const h = d.health || {};
+    const us = h.update_stats || {};
+    const cov = h.coverage || {};
+
+    // 全市场覆盖面：把「扫描范围」讲清楚 —— 不是只扫一部分，而是全市场逐一判定
+    const live = cov.market_live || h.market_total || 0;
+    const have = h.stocks || 0;
+    const shortN = cov.short_history != null ? cov.short_history
+                                             : Math.max(0, live - have);
+    const pct = live ? (have / live * 100) : 0;
+
+    let coverCell = '';
+    if (live) {
+      coverCell = '<div class="metric hero"><div class="k">全市场覆盖</div>' +
+        '<div class="v sm">' + have + ' / ' + live + ' 只 · ' + pct.toFixed(1) + '%</div>' +
+        '<div class="x">上市不足 61 周的次新股 ' + shortN +
+        ' 只（无法计算 60 周线，满 61 周自动纳入）' +
+        (h.tx_codes ? ' · 其中 ' + h.tx_codes + ' 只由腾讯源兜底' : '') +
+        '</div></div>';
+    }
+
+    // 抓取覆盖率：如实反映上次增量更新抓到多少，漏抓可见
+    let fetchCell = '';
+    if (us.todo || us.fetched) {
+      const rate = us.todo ? Math.round(us.fetched / us.todo * 100) : 100;
+      const tx = us.fallback || 0;
+      fetchCell = '<div class="metric"><div class="k">数据仓抓取（上次增量更新）</div>' +
+        '<div class="v sm">' + us.fetched + ' / ' + us.todo + ' 只 · ' + rate + '%</div>' +
+        '<div class="x">' + esc(us.ts || '') +
+        (tx ? ' · 其中 ' + tx + ' 只由腾讯兜底补齐' : '') +
+        (us.unresolved ? ' · ' + us.unresolved + ' 只两源均未取到（已沿用旧值，覆盖面未缩水）'
+                       : '') +
+        (us.timed_out ? ' · 达到时间预算提前停止' : '') + '</div></div>';
+    }
 
     $('healthGrid').innerHTML =
-      metric('覆盖标的', h.stocks || 0, '只（全A在市）') +
+      metric('仓内标的', h.stocks || 0, '只（可计算 60 周线）') +
       metric('周线记录', ((h.weekly_rows || 0) / 10000).toFixed(1), '万行') +
       metric('最新数据日', h.last_update || '—', 'baostock 后复权') +
       metric('图表累计', h.chart_count || 0, '张（近 7 个交易日）') +
       metric('数据仓体积', h.store_mb || 0, 'MB') +
-      metric('名称覆盖', h.names_covered || 0, '只');
+      metric('名称覆盖', h.names_covered || 0, '只') +
+      coverCell + fetchCell;
+
+    const gapTxt = us.gap_filled
+      ? '本轮新纳入 <b>' + us.gap_filled + '</b> 只（腾讯源补齐）。' : '';
     $('healthNote').innerHTML =
-      '数据源 ' + esc(h.source || '—') + '；最近出图日：' +
-      ((h.chart_days || []).slice(-4).join('、') || '—') +
-      '。<br>每个交易日的 16:07 会自动增量更新数据仓，10:05 / 11:05 / 14:05 / 14:55 盘中扫描，15:15 收盘确认。';
+      '<b>每次扫描都是全市场逐只判定，不做抽样、不留遗漏。</b>' +
+      '「仓内标的」＝已纳入扫描、且历史足够计算 60 周线的标的数（' + have + ' 只）；' +
+      '与全市场在市 ' + live + ' 只的差额是 <b>' + shortN +
+      ' 只上市不足 61 周的次新股</b>——物理上还画不出 60 周均线，' +
+      '它们每周自动重试，满 61 周即刻进仓。<br>' +
+      gapTxt +
+      '数据源以 baostock 为主，腾讯行情为兜底（baostock 触发限流或个别标的缺数据时自动切换，' +
+      '当前 ' + (h.tx_codes || 0) + ' 只走腾讯源）。每个交易日 16:07 自动增量更新，' +
+      '合并写入、失败只沿用旧值、绝不缩小覆盖面；10:05 / 11:05 / 14:05 / 14:55 盘中扫描，15:15 收盘确认。';
 
     // 额度
     const p = d.push || {};
@@ -567,6 +615,8 @@
   async function boot() {
     bindTabs();
     bindSheets();
+    const vb = $('verBadge');
+    if (vb) vb.textContent = APP_VERSION;
     try {
       const [d, st] = await Promise.all([loadJSON('data.json'), loadJSON('static.json')]);
       S.data = d;

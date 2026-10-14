@@ -82,6 +82,12 @@ def _store_codes() -> list[str]:
     return out
 
 
+def _tencent_code_count() -> int:
+    """仓内以腾讯为数据源的标的数（baostock 缺口兜底部分）。"""
+    d = _read_json(STATE / "code_sources.json", {}) or {}
+    return sum(1 for v in d.values() if v == "tencent")
+
+
 def refresh_names(codes: list[str] | None = None) -> dict:
     from alert import quoter  # 延迟导入，离线时不炸
 
@@ -259,6 +265,8 @@ def _health() -> dict:
             if len(cols) >= 3:
                 data_date = cols[2].strip()
 
+    us = _read_json(STATE / "update_stats.json", {}) or {}
+
     return {
         "stocks": len(_store_codes()),
         "weekly_rows": weekly_rows,
@@ -271,6 +279,23 @@ def _health() -> dict:
                               ("weekly_closes.csv.gz", "last_close.csv", "avg_amt20.csv",
                                "last_quotes.csv", "industry_sw.csv.gz", "stock_names.csv")), 2),
         "source": "baostock（存储后复权·展示前复权）",
+        "market_total": int(us.get("market_total") or 0),
+        "update_stats": {
+            "ts": us.get("ts", ""),
+            "fetched": int(us.get("fetched") or 0),
+            "todo": int(us.get("todo") or 0),
+            "coverage": int(us.get("coverage") or 0),
+            "failed": int(us.get("failed") or 0),
+            "timed_out": bool(us.get("timed_out") or False),
+            "fallback": int(us.get("fallback") or 0),
+            "unresolved": int(us.get("unresolved") or 0),
+            "source": us.get("source", ""),
+            "gap_filled": int(us.get("gap_filled") or 0),
+            "gap_short": int(us.get("gap_short") or 0),
+            "gap_checked": int(us.get("gap_checked") or 0),
+        },
+        "coverage": us.get("refresh") or {},
+        "tx_codes": _tencent_code_count(),
     }
 
 
