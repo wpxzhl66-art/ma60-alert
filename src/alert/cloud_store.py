@@ -21,7 +21,7 @@ import gzip
 import json
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date
 from multiprocessing import Pool
 from pathlib import Path
 

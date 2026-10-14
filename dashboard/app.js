@@ -10,7 +10,7 @@
   const REMOTE = 'https://raw.githubusercontent.com/' + REPO + '/main/dashboard';
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.5.0';
+  const APP_VERSION = 'v1.5.1';
 
   const S = {
     data: null,        // data.json
@@ -393,7 +393,7 @@
     sorted.forEach((r, i) => list.appendChild(trigRow(r, i)));
     $('trigNote').innerHTML =
       '口径：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
-      '「偏离」＝ 现价相对 60 周线的乖离；「量比」＝ 今日成交额 / 近 20 日均成交额。' +
+      '「偏离」＝ 现价高于或低于 60 周线的百分比；「量比」＝ 今日成交额 / 近 20 日均成交额。' +
       '切换排序后，若该字段平时不显示，会临时补在编号行里。';
   }
 
@@ -574,7 +574,7 @@
     renderFutAll();
 
     $('futNote').innerHTML =
-      '口径：<b>突破</b>＝上一交易日加权收盘 &lt; 60 周线 且 当前加权价 ≥ 60 周线；' +
+      '口径：<b>突破</b>＝上一交易日加权收盘 &lt; 60 周线 且 最新加权价 ≥ 60 周线；' +
       '<b>临近</b>＝未上穿但与 60 周线的偏离在 ±' +
       ((d.near_pct || 0.03) * 100).toFixed(0) + '% 之内。' +
       '「加权」＝该品种全部在市合约按<b>持仓量</b>加权（' +
@@ -610,48 +610,11 @@
     const weeks = r.wk.map((x) => x[0]);
     const closes = r.wk.map((x) => x[1]);
     const m60 = ma(closes, 60);
-    kChart.setOption({
-      animation: false,
-      grid: { left: 52, right: 14, top: 22, bottom: 30 },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
-        textStyle: { color: '#fff', fontSize: 12 },
-        formatter: (ps) => {
-          if (!ps || !ps.length) return '';
-          const i = ps[0].dataIndex;
-          let s = weeks[i] + '<br/>加权周收盘 <b>' + futPrice(closes[i]) + '</b>';
-          if (m60[i] != null) s += '<br/>60 周线 ' + futPrice(m60[i]);
-          return s;
-        },
-      },
-      xAxis: {
-        type: 'category', data: weeks, boundaryGap: false,
-        axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
-        axisTick: { show: false },
-        axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
-      },
-      yAxis: {
-        type: 'value', scale: true,
-        splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
-        axisLabel: { color: '#8e8e93', fontSize: 10 },
-      },
-      series: [
-        {
-          name: '加权周收盘', type: 'line', data: closes, smooth: false,
-          symbol: 'none', lineStyle: { width: 1.8, color: '#5856d6' },
-          areaStyle: {
-            color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: 'rgba(88,86,214,.16)' },
-                           { offset: 1, color: 'rgba(88,86,214,0)' }] },
-          },
-        },
-        {
-          name: '60 周线', type: 'line', data: m60, symbol: 'none',
-          lineStyle: { width: 1.8, color: '#ff9500' },
-        },
-      ],
-    });
+    kChart.setOption(weeklyChartOption(weeks, closes, m60, {
+      closeLabel: '加权周收盘', color: '#5856d6', gridLeft: 52,
+      areaTop: 'rgba(88,86,214,.16)', areaBottom: 'rgba(88,86,214,0)',
+      fmt: futPrice,
+    }));
     kChart.resize();
   }
 
@@ -661,7 +624,7 @@
       metric('60 周线', futPrice(r.ma60), '偏离 ' + pct(r.dev_pct * 100, 2)) +
       metric('状态', r.status, r.sector + ' · 均线' + r.slope);
     $('chartNote').innerHTML =
-      '曲线为该品种的<b>持仓量加权价</b>与 <b>60 周均线</b>：' +
+      '曲线为该品种的<b>持仓量加权价</b>与 <b>60 周线</b>：' +
       'Σ(合约收盘 × 合约持仓量) / Σ(持仓量)，覆盖全部在市合约。' +
       '加权口径不产生换月跳空，因此 60 周线不会被主力换月的价格断崖污染。';
   }
@@ -719,7 +682,7 @@
       '<b>每次扫描都是全市场逐只判定，不做抽样、不留遗漏。</b>' +
       '「仓内标的」＝已纳入扫描、且历史足够计算 60 周线的标的数（' + have + ' 只）；' +
       '与全市场在市 ' + live + ' 只的差额是 <b>' + shortN +
-      ' 只上市不足 61 周的次新股</b>——物理上还画不出 60 周均线，' +
+      ' 只上市不足 61 周的次新股</b>——物理上还画不出 60 周线，' +
       '它们每周自动重试，满 61 周即刻进仓。<br>' +
       gapTxt +
       '数据源以 baostock 为主，腾讯行情为兜底（baostock 触发限流或个别标的缺数据时自动切换，' +
@@ -828,6 +791,53 @@
   let kChart = null;
   let kContext = null;
 
+  /** 周线折线图的公共配置。股票图与期货图共用，保证交互一致。 */
+  function weeklyChartOption(weeks, closes, m60, o) {
+    return {
+      animation: false,
+      grid: { left: o.gridLeft || 46, right: 14, top: 22, bottom: 30 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (ps) => {
+          if (!ps || !ps.length) return '';
+          const i = ps[0].dataIndex;
+          let s = weeks[i] + '<br/>' + o.closeLabel + ' <b>' + o.fmt(closes[i]) + '</b>';
+          if (m60[i] != null) s += '<br/>60 周线 ' + o.fmt(m60[i]);
+          return s;
+        },
+      },
+      xAxis: {
+        type: 'category', data: weeks, boundaryGap: false,
+        axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+        axisTick: { show: false },
+        axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
+      },
+      yAxis: {
+        type: 'value', scale: true,
+        splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
+        axisLabel: { color: '#8e8e93', fontSize: 10 },
+      },
+      series: [
+        {
+          name: o.closeLabel, type: 'line', data: closes, smooth: false,
+          symbol: 'none', lineStyle: { width: 1.8, color: o.color },
+          areaStyle: {
+            color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [{ offset: 0, color: o.areaTop },
+                           { offset: 1, color: o.areaBottom }] },
+          },
+          markPoint: o.markPoint ? { data: o.markPoint, silent: true } : undefined,
+        },
+        {
+          name: '60 周线', type: 'line', data: m60, symbol: 'none',
+          lineStyle: { width: 1.8, color: '#ff9500' },
+        },
+      ],
+    };
+  }
+
   async function openKline(code, name) {
     kContext = { code: code, name: name, kind: 'stock' };
     $('chartTitle').textContent = name + ' · 周 K';
@@ -881,49 +891,12 @@
       itemStyle: { color: '#34c759' }, label: { color: '#fff', fontSize: 11, fontWeight: 700 },
     }));
 
-    kChart.setOption({
-      animation: false,
-      grid: { left: 46, right: 14, top: 22, bottom: 30 },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
-        textStyle: { color: '#fff', fontSize: 12 },
-        formatter: (ps) => {
-          if (!ps || !ps.length) return '';
-          const i = ps[0].dataIndex;
-          let s = weeks[i] + '<br/>周收盘 <b>' + closes[i].toFixed(2) + '</b>';
-          if (m60[i] != null) s += '<br/>60 周线 ' + m60[i].toFixed(2);
-          return s;
-        },
-      },
-      xAxis: {
-        type: 'category', data: weeks, boundaryGap: false,
-        axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
-        axisTick: { show: false },
-        axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
-      },
-      yAxis: {
-        type: 'value', scale: true,
-        splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
-        axisLabel: { color: '#8e8e93', fontSize: 10 },
-      },
-      series: [
-        {
-          name: '周收盘', type: 'line', data: closes, smooth: false,
-          symbol: 'none', lineStyle: { width: 1.8, color: '#007aff' },
-          areaStyle: {
-            color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: 'rgba(0,122,255,.16)' },
-                           { offset: 1, color: 'rgba(0,122,255,0)' }] },
-          },
-          markPoint: { data: buyPts.concat(sellPts), silent: true },
-        },
-        {
-          name: '60 周线', type: 'line', data: m60, symbol: 'none',
-          lineStyle: { width: 1.8, color: '#ff9500' },
-        },
-      ],
-    });
+    kChart.setOption(weeklyChartOption(weeks, closes, m60, {
+      closeLabel: '周收盘', color: '#007aff',
+      areaTop: 'rgba(0,122,255,.16)', areaBottom: 'rgba(0,122,255,0)',
+      fmt: (v) => v.toFixed(2),
+      markPoint: buyPts.concat(sellPts),
+    }));
     kChart.resize();
   }
 
@@ -939,9 +912,9 @@
     $('chartStats').innerHTML =
       metric('最新周收盘', num(last.close, 2), last.week) +
       metric('60 周线', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
-      metric('申万行业', ind, q ? '最新价 ' + num(q[0], 2) : '');
+      metric('申万行业', ind, q ? '现价 ' + num(q[0], 2) : '');
     $('chartNote').innerHTML =
-      '曲线为<b>前复权周收盘价</b>与 <b>60 周均线</b>（换前复权只改变价格刻度，' +
+      '曲线为<b>前复权周收盘价</b>与 <b>60 周线</b>（换前复权只改变价格刻度，' +
       '收盘/均线比值与预警信号完全一致）。' +
       'B / S 标记来自你的模拟账户在该标的上的买卖点。';
   }
@@ -1015,13 +988,11 @@
     }
   }
 
+  /* 供 account.js 与测试脚本使用的最小导出集。别加没人用的东西。 */
   window.WB = {
     S: S, $: $, el: el, esc: esc, num: num, pct: pct, cls: cls, metric: metric,
-    loadJSON: loadJSON, fetchWeeklyOne: fetchWeeklyOne,
-    fetchQuotes: fetchQuotes, refreshQuotes: refreshQuotes,
-    openKline: openKline, ma: ma, timeAgo: timeAgo, yi: yi,
-    REPO: REPO, REMOTE: REMOTE,
-    closeTrade: closeTrade,
+    fetchWeeklyOne: fetchWeeklyOne, fetchQuotes: fetchQuotes,
+    openKline: openKline, closeTrade: closeTrade,
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

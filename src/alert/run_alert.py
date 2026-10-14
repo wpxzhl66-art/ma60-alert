@@ -22,8 +22,6 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-import numpy as np
-
 from . import pusher, quoter, scanner, template
 from .config import load
 from .ma60_base import build_snapshot, load_snapshot
