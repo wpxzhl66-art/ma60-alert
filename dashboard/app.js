@@ -173,6 +173,46 @@
   }
 
   /* ------------------------------------------------ 视图：今日 */
+  /* -------------------------------------------- 下一次扫描（GitHub 定时推算） */
+  const SCAN_SCHEDULE = [   // 与 .github/workflows/alert.yml 的北京时间 cron 保持一致
+    { hm: '10:05', label: '盘中扫描' },
+    { hm: '11:05', label: '盘中扫描' },
+    { hm: '14:05', label: '盘中扫描' },
+    { hm: '14:55', label: '尾盘扫描' },
+    { hm: '15:15', label: '收盘确认' },
+    { hm: '16:07', label: '数据更新' },
+  ];
+
+  function nextScan(now) {
+    now = now || new Date();
+    for (let add = 0; add < 8; add++) {
+      const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + add);
+      const wd = base.getDay();
+      if (wd === 0 || wd === 6) continue;          // cron 只排周一至周五
+      for (const s of SCAN_SCHEDULE) {
+        const t = new Date(base.getFullYear(), base.getMonth(), base.getDate(),
+                           +s.hm.slice(0, 2), +s.hm.slice(3, 5));
+        if (t > now) return { time: t, hm: s.hm, label: s.label, dayOffset: add };
+      }
+    }
+    return null;
+  }
+
+  function nextScanMetric() {
+    const ns = nextScan();
+    if (!ns) return '';
+    const dayWord = ns.dayOffset === 0 ? '今天' : ns.dayOffset === 1 ? '明天'
+      : '周' + '日一二三四五六'[ns.time.getDay()];
+    const mins = Math.max(0, Math.round((ns.time.getTime() - Date.now()) / 60000));
+    const left = mins >= 60
+      ? Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分钟后'
+      : mins + ' 分钟后';
+    return '<div class="metric hero"><div class="k">下一次扫描（GitHub 定时 · 交易日）</div>' +
+      '<div class="v">' + esc(dayWord + ' ' + ns.hm) + '</div>' +
+      '<div class="x">' + esc(ns.label) + ' · ' + esc(left) +
+      ' · 定时可能有数分钟延迟，节假日自动跳过</div></div>';
+  }
+
   function renderToday() {
     const d = S.data;
     const t = d.triggers || {};
@@ -185,11 +225,14 @@
     const pill = $('dayPill');
     const isToday = t.day === today;
     pill.className = 'pill ' + (isToday ? 'on' : 'off');
-    pill.innerHTML = '<i class="dot"></i><span>' + (isToday ? '今日已扫描' : '非交易日 / 未扫描') + '</span>';
+    pill.innerHTML = '<i class="dot"></i><span>' +
+      (isToday ? '今日已扫描' + (t.ts ? ' · ' + esc(t.ts.slice(11, 16)) : '')
+               : '非交易日 / 未扫描') + '</span>';
 
     // Hero
     const newOnes = rows.filter((r) => r.is_new).length;
     const modeLabel = t.mode_label || '扫描';
+    const ts = t.ts || '';
     $('todayHero').innerHTML =
       '<div class="metrics c2">' +
         '<div class="metric hero"><div class="k">当日触及 60 周线（A 类上穿）</div>' +
@@ -199,7 +242,8 @@
         '<div class="metric"><div class="k">本次新触发</div><div class="v sm">' + newOnes + ' 只</div>' +
           '<div class="x">其余今日已推送过</div></div>' +
         '<div class="metric"><div class="k">扫描时间</div><div class="v sm">' +
-          esc((t.ts || '').slice(11, 16) || '—') + '</div><div class="x">' + timeAgo(t.ts) + '</div></div>' +
+          esc(ts ? ts.slice(5, 16).replace('T', ' ') : '—') + '</div><div class="x">' + timeAgo(t.ts) + '</div></div>' +
+        nextScanMetric() +
       '</div>';
 
     // 列表
@@ -392,6 +436,9 @@
 
   function renderKline(code, series) {
     const node = $('kChart');
+    // 必须先销毁旧实例再重建：上一张图的画布已被 innerHTML 清空，
+    // 复用旧实例会画到已脱离 DOM 的画布上 → 第二次打开看不到图
+    if (kChart && !kChart.isDisposed()) kChart.dispose();
     node.innerHTML = '';
     kChart = echarts.init(node);
     const weeks = series.map((d) => d.week);
