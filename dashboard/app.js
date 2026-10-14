@@ -11,7 +11,7 @@
   const QIMG = 'https://raw.githubusercontent.com/' + REPO + '/main/charts';
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.4.0';
+  const APP_VERSION = 'v1.4.1';
 
   const S = {
     data: null,        // data.json

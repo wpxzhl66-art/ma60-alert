@@ -53,10 +53,12 @@ def snapshot(near_pct: float = DEFAULT_NEAR_PCT,
     today = pd.Timestamp(date.today()).normalize()
     prev_map: dict[str, float] = {}
     dnow_map: dict[str, float] = {}
+    dlast_map: dict[str, float] = {}          # 各品种最后一根日线收盘（无论是否今天）
     if not daily.empty:
         for sym, g in daily.groupby("code"):
             g = g.sort_values("date")
             last_row = g.iloc[-1]
+            dlast_map[sym] = float(last_row["close"])
             has_today = pd.Timestamp(last_row["date"]).normalize() == today
             if has_today and len(g) >= 2:
                 prev_map[sym] = float(g["close"].iloc[-2])
@@ -65,6 +67,7 @@ def snapshot(near_pct: float = DEFAULT_NEAR_PCT,
                 prev_map[sym] = float(last_row["close"])
     elif not last.empty:
         prev_map = dict(zip(last["code"], last["last_close"]))
+        dlast_map = dict(prev_map)
 
     rows = []
     for sym, g in weekly.groupby("code"):
@@ -78,7 +81,11 @@ def snapshot(near_pct: float = DEFAULT_NEAR_PCT,
             continue
 
         prev = float(prev_map.get(sym, closes[-1]))
-        now = float(now_map.get(sym, dnow_map.get(sym, closes[-1])))
+        # 当前价优先级：实时加权 → 今日日线收盘 → 最近一根日线收盘 → 周线收盘。
+        # 第三档很关键：实时行情整体不可用时若直接退到周线收盘，会出现
+        # 「now 取上周五、prev 取昨日」的时序颠倒，判定失真。
+        now = float(now_map.get(sym) or dnow_map.get(sym)
+                    or dlast_map.get(sym) or closes[-1])
         dev = now / ma_now - 1.0
         breakout = (prev < ma_now) and (now >= ma_now)
         near = abs(dev) <= near_pct

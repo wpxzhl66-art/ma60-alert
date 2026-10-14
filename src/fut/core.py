@@ -445,7 +445,16 @@ def update(workers: int = REBUILD_WORKERS, future: int = LIVE_MONTHS,
 # --------------------------------------------------------------------------
 # 实时行情 → 实时加权价（盘中扫描用）
 # --------------------------------------------------------------------------
-def _parse_rt(code6: str, body: str, today: str | None = None) -> dict | None:
+RT_MAX_LAG_DAYS = 5      # 行情日期比全市场最新行情日落后超过此天数 → 视为停牌，剔除
+
+
+def _parse_rt(code6: str, body: str) -> dict | None:
+    """解析一条实时行情。``qdate`` 为该合约的行情日期（中金所为 None）。
+
+    注意：这里**不做日期过滤**——同一个时刻，不同品种的行情日期本来就不同
+    （夜盘品种 00:00 后已进入新交易日，23:00 收市的品种还停在上一交易日），
+    过滤统一放到 :func:`fetch_realtime` 里按品种取最近行情日再做。
+    """
     f = body.split(",")
     if len(f) < 20:
         return None
@@ -457,21 +466,28 @@ def _parse_rt(code6: str, body: str, today: str | None = None) -> dict | None:
     try:
         if cffex:
             return {"contract": code6, "price": float(f[3]),
-                    "oi": float(f[6]) if f[6] else 0.0}
-        # 商品期货：[17] 是行情日期。已到期/停牌的合约会一直停在历史日期上，
-        # 若不剔除，这些死合约的历史价会混进加权平均（实测把沪金算高 4%）。
-        if today and len(f) > 17 and f[17] and f[17] != today:
-            return None
+                    "oi": float(f[6]) if f[6] else 0.0, "qdate": None}
         return {"contract": code6, "price": float(f[8]),
-                "oi": float(f[13]) if f[13] else 0.0}
+                "oi": float(f[13]) if f[13] else 0.0,
+                "qdate": f[17] if len(f) > 17 and f[17] else None}
     except (ValueError, IndexError):
         return None
 
 
 def fetch_realtime(contracts: list[str], batch: int = 60) -> pd.DataFrame:
-    """批量拉合约实时行情。返回 contract/price/oi（已剔除已到期合约）。"""
+    """批量拉合约实时行情。返回 contract/price/oi（已剔除停牌/已到期合约）。
+
+    剔除规则（两个条件同时满足才保留）：
+      1. 该合约行情日 == **本品种**内所有合约的最近行情日
+      2. 该品种的最近行情日不得比**全市场**最近行情日落后 ``RT_MAX_LAG_DAYS`` 天
+
+    为什么要按品种取基准日：「今天」这个概念对期货是分市场的。北京时间凌晨
+    00:05，有色金属夜盘已进入新交易日（行情日 = 今天），而 23:00 收市的黑色、
+    化工、农产品行情日仍是**上一交易日**——二者都是有效数据。若统一拿
+    ``date.today()`` 去卡，会把后者的全部合约误判成「死合约」剔除干净
+    （实测凌晨跑时实时覆盖从 77 个品种掉到 21 个）。
+    """
     rows = []
-    today = date.today().isoformat()
     sess = requests.Session()
     for i in range(0, len(contracts), batch):
         chunk = contracts[i:i + batch]
@@ -486,10 +502,28 @@ def fetch_realtime(contracts: list[str], batch: int = 60) -> pd.DataFrame:
             m = re.match(r'var hq_str_nf_(\w+)="(.*)";', line.strip())
             if not m:
                 continue
-            rec = _parse_rt(m.group(1), m.group(2), today)
+            rec = _parse_rt(m.group(1), m.group(2))
             if rec and rec["price"] > 0:
                 rows.append(rec)
-    return pd.DataFrame(rows)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["code"] = df["contract"].str.replace(r"\d+$", "", regex=True).str.upper()
+
+    qd = pd.to_datetime(df["qdate"], errors="coerce")
+    mkt_latest = qd.max()                          # 全市场最近行情日
+    if pd.notna(mkt_latest):
+        stale = qd.notna() & ((mkt_latest - qd).dt.days > RT_MAX_LAG_DAYS)
+        if stale.any():
+            print(f"[fut] 实时行情剔除停牌合约 {int(stale.sum())} 个"
+                  f"（行情日落后全市场 {mkt_latest.date()} 逾 {RT_MAX_LAG_DAYS} 天）")
+        df = df[~stale].copy()
+        # 本品种最近行情日
+        sym_latest = df.groupby("code")["qdate"].transform("max")
+        keep = df["qdate"].isna() | (df["qdate"] == sym_latest)
+        df = df[keep].copy()
+    return df.reset_index(drop=True)
 
 
 def live_weighted(symbols: list[str] | None = None,

@@ -63,13 +63,19 @@ def record_state() -> dict:
 
     st = _load_push_state()
     wk_tag, today = _week_tag(), date.today().isoformat()
+    dedup_w = bool(cfg.get("dedup_weekly", True))
     rows = []
     if len(df):
         for rec in df.to_dict("records"):
             code = rec.get("code")
             prev = st.get(code, {})
-            dup = (prev.get("last_date") == today) or \
-                  (bool(cfg.get("dedup_weekly", True)) and prev.get("last_week") == wk_tag)
+            # 去重键是「品种 + 状态 + 周」：本周内同一品种同一状态只提醒一次；
+            # 若从「临近」升级为「突破」则算新事件，仍会提醒。
+            if dedup_w:
+                dup = (prev.get("last_week") == wk_tag
+                       and prev.get("status") == rec.get("status"))
+            else:
+                dup = prev.get("last_date") == today
             rec["is_new"] = not dup
             rows.append(rec)
 
@@ -105,8 +111,16 @@ def _line(r: dict) -> str:
             f"｜均线{r.get('slope')}｜年内上穿 {r.get('up_cnt_1y', 0)} 次")
 
 
-def build_section(only_new: bool = True) -> tuple[str, list[str]]:
-    """组装期货推送段落。返回 (markdown 文本, 段落内品种代码)。"""
+def build_section(only_new: bool = True) -> tuple[str, list[list[str]]]:
+    """组装期货推送段落。
+
+    返回 ``(markdown 文本, 本次应标记为「已推送」的 [[code, status], ...])``。
+
+    注意：第二个返回值是**全部新触发品种**，而不仅是正文里列出的那些。
+    正文为避免消息过长只列前 ``push_near_max`` 个临近品种，但去重必须按
+    「全量」记账——否则每次盘中扫描都会把上次没列出的品种补位顶上，
+    同一个品种一天被滚动推送四轮，白耗额度。
+    """
     cfg = load().get("futures") or {}
     if not cfg.get("enabled", True) or not cfg.get("push", True):
         return "", []
@@ -141,12 +155,18 @@ def build_section(only_new: bool = True) -> tuple[str, list[str]]:
     txt = "\n\n".join(parts)
     if cfg.get("dedup_weekly", True):
         txt += "\n\n_同一品种同一周只推首次；完整清单见看板「期货」页。_"
-    return txt, [r["code"] for r in bks] + [r["code"] for r in shown_near]
+    marked = [[r["code"], r["status"]] for r in bks + nrs]
+    return txt, marked
 
 
-def mark_pushed(codes: list[str]) -> None:
+def mark_pushed(pairs: list) -> None:
+    """标记已推送。``pairs`` 可传 ``[[code, status], ...]`` 或 ``[code, ...]``。"""
     st = _load_push_state()
     today, wk = date.today().isoformat(), _week_tag()
-    for c in codes:
-        st[c] = {"last_date": today, "last_week": wk}
+    for it in pairs:
+        if isinstance(it, (list, tuple)):
+            code, status = (list(it) + ["", ""])[:2]
+        else:
+            code, status = it, ""
+        st[code] = {"last_date": today, "last_week": wk, "status": status}
     _save_push_state(st)
