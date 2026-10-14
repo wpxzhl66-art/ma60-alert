@@ -181,6 +181,7 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "scan"):
               "day": day, "n": int(len(trig)), "charts": {}}
     if len(trig):
         trig_out = trig[MSG_FIELDS].copy()
+        OUT.mkdir(parents=True, exist_ok=True)
         trig_out.to_csv(PENDING_CSV)
         if _chart_enabled():
             from .chart import render_weekly_chart
