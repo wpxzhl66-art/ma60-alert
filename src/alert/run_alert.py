@@ -265,8 +265,15 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
                 continue
             name = str(trig_all.at[code, "name"])
             out = ROOT / "charts" / day / f"{code.split('.')[1]}.png"
+            # 内部存储为后复权，除以当日复权因子换算成前复权后再画，
+            # 使坐标轴价格与行情软件一致（比值不变，信号不受影响）
             try:
-                render_weekly_chart(code, name, weekly, out)
+                fac = float(trig_all.at[code, "factor"]) if "factor" in trig_all.columns else 0.0
+            except (TypeError, ValueError):
+                fac = 0.0
+            scale = (1.0 / fac) if fac and fac == fac and fac > 0 else 1.0
+            try:
+                render_weekly_chart(code, name, weekly, out, scale=scale)
                 result["charts"][code] = out.relative_to(ROOT).as_posix()
             except Exception as exc:  # noqa: BLE001
                 print(f"[chart] {code} 渲染失败: {exc}")

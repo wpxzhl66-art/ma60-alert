@@ -544,19 +544,23 @@
       return;
     }
     node.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
-    try { await WB.loadWeekly(); } catch (e) {
-      node.innerHTML = '<div class="empty">周线数据不可用，无法绘制曲线</div>'; return;
-    }
     const init = +(A.account.initial_capital || DEFAULT_CAPITAL);
     const startDate = A.trades.map((t) => t.trade_date).sort()[0];
+    const codes = Object.keys(A.pos);
 
-    const bench = WB.weeklySeries('sh.000300') || [];
-    const axis = bench.filter((d) => d.week >= startDate);
+    // 按需拉周线（逐只，几 KB）：基准 + 持仓个股。
+    // 持仓估值必须用「不复权」真实价（前复权会压低历史价格 → 市值算错），
+    // 因此这里传 fq=''；基准归一化后与复权口径无关。
+    const got = {};
+    await Promise.all(['sh.000300'].concat(codes).map(async (c) => {
+      try { got[c] = await WB.fetchWeeklyOne(c, ''); } catch (e) { got[c] = []; }
+    }));
+
+    const axis = (got['sh.000300'] || []).filter((d) => d.week >= startDate);
     if (!axis.length) { node.innerHTML = '<div class="empty">区间内无基准数据</div>'; return; }
 
-    const codes = Object.keys(A.pos);
     const cache = {};
-    codes.forEach((c) => { cache[c] = WB.weeklySeries(c) || []; });
+    codes.forEach((c) => { cache[c] = got[c] || []; });
     const closeAt = (c, w) => {
       const arr = cache[c];
       if (!arr || !arr.length) return null;

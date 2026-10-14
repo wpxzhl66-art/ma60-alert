@@ -4,13 +4,15 @@
   data.json     每日动态：今日触发、运行流水、历史趋势、数据健康度（小、每次扫描都刷）
   quotes.json   全市场最新价（不复权），账户估值的兜底价格源
   static.json   名称 + 申万行业（内容变了才提交，几乎不变）
-  weekly.json   周收盘序列（纯文本，git 增量友好；内容变了才提交）
+
+注：weekly.json 自 v1.2.1 起停用——整包 4.5MB，国内访问 raw 拉不动，
+    前端改为点开图表时按需向腾讯行情取单股周线（前复权）。
 
 用法：
   python -m dashboard.build --all       # 全量构建
   python -m dashboard.build --names     # 仅刷新 store/stock_names.csv
   python -m dashboard.build --daily     # 日常：quotes + data
-  python -m dashboard.build --weekly    # 周更：static + weekly + data
+  python -m dashboard.build --weekly    # 周更：static + data
 """
 from __future__ import annotations
 
@@ -167,82 +169,14 @@ def build_quotes() -> dict:
 
 
 # --------------------------------------------------------------------------
-# 4. weekly.json —— 周收盘序列（全局周轴 + 每只起始下标）
+# 4. weekly.json —— 已停用（v1.2.1）
 # --------------------------------------------------------------------------
-def _refresh_index_weekly(code: str = "sh.000300", n: int = 140) -> Path | None:
-    """拉沪深300 周线做绩效基准，缓存到 store/index_weekly.csv。失败则沿用缓存。"""
-    import urllib.request
-
-    sec = code.replace(".", "")
-    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sec},week,,,{n},"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=25) as r:
-            payload = json.loads(r.read().decode("utf-8", "ignore"))
-        blk = payload["data"][sec]
-        bars = None
-        for v in blk.values():
-            if isinstance(v, list) and v and isinstance(v[0], list) and len(v[0]) >= 3:
-                bars = v
-                break
-        if not bars:
-            raise ValueError("返回结构不含周线数组")
-        lines = ["code,week_end,close"]
-        for b in bars:
-            lines.append(f"{code},{b[0]},{round(float(b[2]), 4)}")
-        (STORE / "index_weekly.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"[index] {code} 基准周线 {len(bars)} 根已刷新")
-        return STORE / "index_weekly.csv"
-    except Exception as e:  # noqa: BLE001
-        print(f"[index] 沪深300 周线拉取失败（沿用缓存）：{e}")
-        p = STORE / "index_weekly.csv"
-        return p if p.exists() else None
-
-
-def build_weekly(refresh_index: bool = True) -> None:
-    import csv
-    import gzip
-
-    src = STORE / "weekly_closes.csv.gz"
-    if not src.exists():
-        print("[weekly] 缺少 store/weekly_closes.csv.gz，跳过")
-        return
-
-    weeks: list[str] = []
-    week_idx: dict[str, int] = {}
-    rows: dict[str, list[tuple[int, float]]] = {}
-
-    def put(code: str, wk: str, close: float) -> None:
-        if wk not in week_idx:
-            week_idx[wk] = len(weeks)
-            weeks.append(wk)
-        rows.setdefault(code, []).append((week_idx[wk], close))
-
-    with gzip.open(src, "rt", encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            put(r["code"], r["week_end"], float(r["close"]))
-
-    idx = _refresh_index_weekly() if refresh_index else (STORE / "index_weekly.csv")
-    if idx and idx.exists():
-        with open(idx, encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                put(r["code"], r["week_end"], float(r["close"]))
-
-    stocks: dict[str, dict] = {}
-    for code, seq in rows.items():
-        seq.sort()
-        idxs = [i for i, _ in seq]
-        closes = [round(c, WEEK_DECIMALS) for _, c in seq]
-        contiguous = idxs == list(range(idxs[0], idxs[0] + len(idxs)))
-        entry: dict = {"c": closes}
-        if contiguous:
-            entry["b"] = idxs[0]
-        else:
-            entry["i"] = idxs
-        stocks[code] = entry
-
-    obj = {"weeks": weeks, "stocks": stocks}
-    _write_if_changed(OUT / "weekly.json", _dump(obj), "weekly")
+# 原实现把全市场 ~130 周收盘打成一个 4.5MB 的 weekly.json，由前端在打开周K时下载。
+# 实测国内访问 raw.githubusercontent.com 拉该文件约 1.4 KB/s（30 秒仅 40KB），
+# 导致「点开股票一直转圈」，且其数据源为后复权，与行情软件显示不一致。
+# 现改为：前端点开图表时按需向腾讯行情取该股周线（前复权，几 KB，国内秒开），
+# 持仓估值另行取不复权真实价。本文件不再生成，dashboard/weekly.json 已移除。
+# --------------------------------------------------------------------------
 
 
 # --------------------------------------------------------------------------
@@ -336,7 +270,7 @@ def _health() -> dict:
         "store_mb": round(sum(size_mb(STORE / f) for f in
                               ("weekly_closes.csv.gz", "last_close.csv", "avg_amt20.csv",
                                "last_quotes.csv", "industry_sw.csv.gz", "stock_names.csv")), 2),
-        "source": "baostock（后复权）",
+        "source": "baostock（存储后复权·展示前复权）",
     }
 
 
@@ -393,9 +327,9 @@ def build_data(static_obj: dict | None = None) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="看板数据构建")
-    ap.add_argument("--all", action="store_true", help="全量（names+static+quotes+weekly+data）")
+    ap.add_argument("--all", action="store_true", help="全量（names+static+quotes+data）")
     ap.add_argument("--daily", action="store_true", help="日常：quotes + data")
-    ap.add_argument("--weekly", action="store_true", help="周更：static + weekly + data")
+    ap.add_argument("--weekly", action="store_true", help="周更：static + data")
     ap.add_argument("--names", action="store_true", help="刷新 stock_names.csv")
     ap.add_argument("--static", action="store_true")
     ap.add_argument("--quotes", action="store_true")
@@ -411,8 +345,6 @@ def main() -> None:
         static_obj = build_static()
     if a.all or a.daily or a.quotes:
         build_quotes()
-    if a.all or a.weekly:
-        build_weekly()
     if a.all or a.daily or a.weekly or a.data:
         build_data(static_obj)
 

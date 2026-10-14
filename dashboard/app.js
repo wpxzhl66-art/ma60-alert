@@ -14,8 +14,9 @@
     data: null,        // data.json
     static: null,      // static.json
     quotes: {},        // quotes.json：全市场最新价（账户估值兜底）
-    weekly: null,      // weekly.json（惰性加载）
+    weekly: null,      // 整包周线（v1.2.1 起已停用，仅作兜底）
     weeklyLoading: null,
+    weeklyOne: {},     // 单股周线缓存（按需拉取）
     codeIndex: null,   // 搜索用
   };
 
@@ -91,6 +92,41 @@
       for (let k = 0; k < st.c.length; k++) out.push({ week: weeks[st.i[k]], close: st.c[k] });
     }
     return out;
+  }
+
+  /* ------------------------------------------------ 单股周线（按需、前复权）
+     整包 weekly.json 有 4MB+，国内访问 raw.githubusercontent 基本拉不完，
+     所以点开图表时只取这一只股票的周线（几 KB，国内 CDN 秒开，前复权口径），
+     失败才退回整合包。 */
+  const WK_URL = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=';
+
+  async function fetchWeeklyOne(code, fq) {
+    fq = (fq === undefined || fq === null) ? 'qfq' : fq;   // 默认前复权（看盘口径）
+    if (!S.weeklyOne) S.weeklyOne = {};
+    const key = code + '|' + fq;
+    if (S.weeklyOne[key]) return S.weeklyOne[key];
+    const sec = code.replace('.', '');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000);
+    try {
+      const r = await fetch(WK_URL + sec + ',week,,,320,' + fq, { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const blk = j && j.data && j.data[sec];
+      const want = fq === 'qfq' ? 'qfqweek' : (fq === 'hfq' ? 'hfqweek' : 'week');
+      let bars = (blk && Array.isArray(blk[want]) && blk[want].length) ? blk[want] : null;
+      if (!bars && blk) {
+        for (const k of ['qfqweek', 'week', 'hfqweek']) {
+          if (Array.isArray(blk[k]) && blk[k].length) { bars = blk[k]; break; }
+        }
+      }
+      if (!bars) throw new Error('无周线数据');
+      const out = bars.filter((b) => b && b.length >= 3)
+        .map((b) => ({ week: b[0], close: +b[2] }));
+      if (!out.length) throw new Error('无周线数据');
+      S.weeklyOne[key] = out;
+      return out;
+    } finally { clearTimeout(timer); }
   }
 
   /* ------------------------------------------------ 实时行情（JSONP 式 script 注入） */
@@ -324,16 +360,19 @@
     kContext = { code: code, name: name };
     $('chartTitle').textContent = name + ' · 周 K';
     $('chartMask').classList.add('show');
-    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
-    try {
-      await loadWeekly();
-    } catch (e) {
-      $('kChart').innerHTML = '<div class="empty">周线数据加载失败<br>' + esc(e.message) + '</div>';
-      return;
+    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
+    // 快速路径：单股前复权周线；样本不足 61 根（新股）或失败时退回整合包
+    let series = await fetchWeeklyOne(code).catch(() => null);
+    if (!series || series.length < 61) {
+      try {
+        await loadWeekly();
+        const s2 = weeklySeries(code);
+        if (s2 && s2.length) series = s2;
+      } catch (e) { /* 保留快速路径结果 */ }
     }
-    const series = weeklySeries(code);
-    if (!series) {
-      $('kChart').innerHTML = '<div class="empty">该标的暂无周线数据</div>';
+    if (!series || !series.length) {
+      $('kChart').innerHTML =
+        '<div class="empty">周线数据获取失败<br>请检查网络后重试</div>';
       return;
     }
     renderKline(code, series);
@@ -431,7 +470,8 @@
       metric('60 周线', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
       metric('申万行业', ind, q ? '最新价 ' + num(q[0], 2) : '');
     $('chartNote').innerHTML =
-      '曲线为<b>后复权周收盘价</b>与 <b>60 周均线</b>（口径与预警一致）。' +
+      '曲线为<b>前复权周收盘价</b>与 <b>60 周均线</b>（换前复权只改变价格刻度，' +
+      '收盘/均线比值与预警信号完全一致）。' +
       'B / S 标记来自你的模拟账户在该标的上的买卖点。';
   }
 
@@ -504,6 +544,7 @@
   window.WB = {
     S: S, $: $, el: el, esc: esc, num: num, pct: pct, cls: cls, metric: metric,
     loadJSON: loadJSON, loadWeekly: loadWeekly, weeklySeries: weeklySeries,
+    fetchWeeklyOne: fetchWeeklyOne,
     fetchQuotes: fetchQuotes, refreshQuotes: refreshQuotes,
     openKline: openKline, ma: ma, timeAgo: timeAgo, yi: yi, wan: wan,
     REPO: REPO, REMOTE: REMOTE, QIMG: QIMG,

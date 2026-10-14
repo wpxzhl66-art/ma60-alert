@@ -34,13 +34,17 @@ def setup_font():
 
 
 def render_weekly_chart(code: str, name: str, weekly: pd.Series,
-                        out_path: Path, hfq_note: bool = True) -> Path:
+                        out_path: Path, scale: float = 1.0) -> Path:
     """weekly: index=周期末Timestamp, values=周收盘（后复权）。
+
+    scale: 显示换算系数。内部数据为后复权，乘上「当日不复权价 / 当日后复权价」
+           即换算为前复权（两种复权仅差一个正常数，因此 收盘/MA60 的比值、
+           上穿判定与信号完全不变，只是坐标轴数字变成行情软件里的真实价）。
 
     自动计算 MA60 并标注「最近一个已完成周是否处于上穿状态」。
     """
     setup_font()
-    w = weekly.dropna().tail(N_WEEKS)
+    w = weekly.dropna().tail(N_WEEKS) * float(scale)
     if len(w) < MA_WEEKS + 1:
         raise ValueError(f"{code} 周样本不足({len(w)})")
     ma = w.rolling(MA_WEEKS).mean()
@@ -62,7 +66,7 @@ def render_weekly_chart(code: str, name: str, weekly: pd.Series,
                color=UP if w.values[-1] >= w.values[-2] else DOWN, zorder=5)
 
     ax.set_title(f"{name}（{code}）周K 与 60周线", fontsize=13, pad=8)
-    note = "后复权价格" if hfq_note else ""
+    note = "前复权价格"
     ax.text(0.995, 0.02, note, transform=ax.transAxes, ha="right",
             va="bottom", fontsize=8, color="#8E8E93")
     ax.grid(alpha=0.25, lw=0.6)
