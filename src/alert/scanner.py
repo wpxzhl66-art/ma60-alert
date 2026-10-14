@@ -38,6 +38,9 @@ def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
     现价 hfq 换算：factor = 快照末收盘 / 行情昨收（两者为同一交易日的
     后复权价与不复权价之比，即当日复权因子）；P_hfq = 现价 × factor。
 
+    输出列在快照列之外追加：chg_pct / amount_wan / turnover / mv_float_yi /
+    dev_pct / amt_ratio / is_new / mode（看板排序与推送都依赖这些）。
+
     dedup=True 时只返回「本日/本周尚未推送过」的新触发（推送口径）；
     dedup=False 时返回全部触发，并在 is_new 列标注是否为新触发
     （看板展示当日全量触发用）。

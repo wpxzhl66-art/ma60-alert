@@ -115,6 +115,9 @@ def snapshot(near_pct: float = DEFAULT_NEAR_PCT,
             "up_cnt_1y": cnt,
             "weeks": int(len(closes)),
             "n_con": int(g["n_con"].iloc[-1]) if "n_con" in g.columns else 0,
+            # 全品种总持仓量（手）：看板可按资金关注度排序
+            "oi_sum": int(g["oi_sum"].iloc[-1]) if "oi_sum" in g.columns
+                      and pd.notna(g["oi_sum"].iloc[-1]) else 0,
             "live": sym in now_map,
         })
     if not rows:

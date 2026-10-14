@@ -828,22 +828,27 @@
     loginView();
   }
 
-  /* ------------------------------------------------ 图表买卖点 */
-  function weekOf(dateStr) {
-    const ws = (WB.S.weekly && WB.S.weekly.weeks) || [];
-    let lo = 0, hi = ws.length - 1, ans = null;
+  /* ------------------------------------------------ 图表买卖点
+     把成交日对齐到周 K 的横轴刻度上。腾讯周线的刻度是「该周最后交易日」，
+     所以成交日（周二/周三…）要往后吸附到本周那根 K 线 —— 否则坐标落不到
+     任何一个类目上，标记会静默消失。
+     早于序列首日（或序列为空）时原样返回，交给图表自行忽略。 */
+  function weekOf(dateStr, weeks) {
+    if (!weeks || !weeks.length) return dateStr;
+    let lo = 0, hi = weeks.length - 1, ans = null;
     while (lo <= hi) {
       const m = (lo + hi) >> 1;
-      if (ws[m] >= dateStr) { ans = ws[m]; hi = m - 1; } else lo = m + 1;
+      if (weeks[m] >= dateStr) { ans = weeks[m]; hi = m - 1; } else lo = m + 1;
     }
-    return ans || dateStr;
+    return ans || weeks[weeks.length - 1];
   }
 
-  function marksFor(code) {
+  function marksFor(code, weeks) {
     const buys = [], sells = [];
     for (const t of A.trades) {
       if (t.code !== code) continue;
-      const item = { week: weekOf(t.trade_date), price: +t.price, date: t.trade_date, shares: +t.shares };
+      const item = { week: weekOf(t.trade_date, weeks), price: +t.price,
+                     date: t.trade_date, shares: +t.shares };
       (t.side === 'buy' ? buys : sells).push(item);
     }
     return { buys: buys, sells: sells };

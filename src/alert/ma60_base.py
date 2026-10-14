@@ -1,4 +1,4 @@
-"""60周线快照：MA60_prev、标签、行业、年内上穿计数、20日均额。
+"""60周线快照：MA60_prev、均线方向、行业、年内上穿计数、20日均额。
 
 两条数据路径共用同一判定核心 `stock_from_weekly()`：
   - 本地：data/daily 日线 → 周收盘（build_snapshot）
@@ -66,16 +66,10 @@ def stock_from_weekly(code: str, weekly: pd.Series,
     return {
         "code": code,
         "ma60_prev": round(ma_now, 4),
-        "ma60_13w": round(ma_13w, 4) if np.isfinite(ma_13w) else np.nan,
         "weekly_closes": w,                      # 供图表使用（不落盘）
         "a_events_1y": cnt,
         "slope": ("向上" if ma_now > ma_13w * 1.01
                   else "向下" if ma_now < ma_13w * 0.99 else "走平"),
-        "alignment": ("多头排列" if (len(ma) > 20
-                        and closes[-1] > np.mean(closes[-5:])
-                        and np.mean(closes[-5:]) > np.mean(closes[-10:])
-                        and np.mean(closes[-10:]) > np.mean(closes[-20:])
-                        and np.mean(closes[-20:]) > ma_now) else "非多头"),
     }
 
 

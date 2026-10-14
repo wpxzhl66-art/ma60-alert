@@ -8,21 +8,20 @@
 
   const REPO = 'wpxzhl66-art/ma60-alert';
   const REMOTE = 'https://raw.githubusercontent.com/' + REPO + '/main/dashboard';
-  const QIMG = 'https://raw.githubusercontent.com/' + REPO + '/main/charts';
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.4.1';
+  const APP_VERSION = 'v1.5.0';
 
   const S = {
     data: null,        // data.json
     static: null,      // static.json
     quotes: {},        // quotes.json：全市场最新价（账户估值兜底）
-    weekly: null,      // 整包周线（v1.2.1 起已停用，仅作兜底）
-    weeklyLoading: null,
-    weeklyOne: {},     // 单股周线缓存（按需拉取）
+    quotesDate: '',
+    one: {},           // 单股/单品种周线缓存（按需拉取，key = code|fq）
     codeIndex: null,   // 搜索用
     fut: null,         // fut.json：期货加权指数板块（切到该页才拉）
     futLoading: null,
+    sort: {},          // 各列表的当前排序 {storeKey: {id, dir}}
   };
 
   /* ------------------------------------------------ 工具 */
@@ -38,8 +37,7 @@
   const num = (v, d) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d == null ? 2 : d);
   const pct = (v, d) => (v == null || isNaN(v)) ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(d == null ? 2 : d) + '%';
   const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : 'muted');
-  const yi = (v) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(1) + ' 亿';
-  const wan = (v) => (v == null || isNaN(v)) ? '—' : (v / 10000).toFixed(2) + ' 万';
+  const yi = (v) => (v == null || isNaN(v) || !v) ? '—' : Number(v).toFixed(1) + ' 亿';
 
   function timeAgo(iso) {
     if (!iso) return '—';
@@ -50,6 +48,150 @@
     if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
     if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
     return Math.floor(s / 86400) + ' 天前';
+  }
+
+  /* ------------------------------------------------ 排序
+     三个列表共用一套「排序栏」：
+       · 点未选中的字段 → 切到该字段，用它的默认方向
+       · 再点已选中的字段 → 翻转方向
+       · 选择写入 localStorage，下次打开保持
+
+     字段描述 { id, label, key(item), dir 默认方向, abs 按绝对值 }
+     注意 abs（只给「偏离」用）：偏离是有正负的，但用户关心的是「离 60 周线多远」，
+     所以排序键取绝对值 —— 越接近 0 越靠前。 */
+  const SORT_LS = 'wb.sort.';
+
+  function readSort(storeKey, spec) {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(SORT_LS + storeKey) || 'null'); }
+    catch (e) { raw = null; }
+    const hit = raw && spec.filter((s) => s.id === raw.id)[0];
+    if (hit) return { id: hit.id, dir: raw.dir === 'asc' ? 'asc' : 'desc' };
+    return { id: spec[0].id, dir: spec[0].dir || 'desc' };
+  }
+
+  function writeSort(storeKey, st) {
+    try { localStorage.setItem(SORT_LS + storeKey, JSON.stringify(st)); }
+    catch (e) { /* 隐私模式下忽略 */ }
+  }
+
+  function curField(spec, st) {
+    return spec.filter((s) => s.id === st.id)[0] || spec[0];
+  }
+
+  /** 排序：缺值一律沉底（不随方向翻转）；字符串按中文（拼音）比较 */
+  function sortRows(rows, spec, st) {
+    const f = curField(spec, st);
+    const sign = st.dir === 'asc' ? 1 : -1;
+    const val = (r) => {
+      let v = f.key(r);
+      if (f.abs) v = Math.abs(v == null || isNaN(v) ? NaN : v);
+      return v;
+    };
+    return rows.slice().sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (typeof x === 'string' || typeof y === 'string') {
+        const ex = (x == null || x === ''), ey = (y == null || y === '');
+        if (ex && ey) return 0;
+        if (ex) return 1;
+        if (ey) return -1;
+        return sign * String(x).localeCompare(String(y), 'zh-Hans-CN');
+      }
+      const nx = (x == null || isNaN(x)), ny = (y == null || isNaN(y));
+      if (nx && ny) return 0;
+      if (nx) return 1;
+      if (ny) return -1;
+      return sign * (x - y);
+    });
+  }
+
+  /** 排序说明，显示在列表标题右侧 */
+  function sortTip(s, dir) {
+    if (s.id === 'dev') {
+      return dir === 'asc' ? '按偏离绝对值升序 · 最贴近 60 周线的排最前'
+                           : '按偏离绝对值降序 · 偏离最远的排最前';
+    }
+    if (s.id === 'ind' || s.id === 'sec') return '按名称聚拢同行业/同板块';
+    return s.label + (dir === 'asc' ? ' 从小到大' : ' 从大到小');
+  }
+
+  function drawSortBar(node, spec, st, onPick) {
+    node.innerHTML = '';
+    spec.forEach((s) => {
+      const b = el('button', 'chip' + (s.id === st.id ? ' on' : ''));
+      b.type = 'button';
+      b.innerHTML = esc(s.label) +
+        (s.id === st.id ? '<span class="ar">' + (st.dir === 'asc' ? '▲' : '▼') + '</span>' : '');
+      b.addEventListener('click', () => onPick(s.id));
+      node.appendChild(b);
+    });
+  }
+
+  /** 挂载排序栏到 S.sort[storeKey]，状态变化时回调 onChange */
+  function mountSort(storeKey, nodeId, spec, onChange) {
+    S.sort[storeKey] = readSort(storeKey, spec);
+    const node = $(nodeId);
+    const repaint = () => drawSortBar(node, spec, S.sort[storeKey], (id) => {
+      const cur = S.sort[storeKey];
+      if (id === cur.id) cur.dir = cur.dir === 'asc' ? 'desc' : 'asc';
+      else {
+        const f = spec.filter((s) => s.id === id)[0];
+        S.sort[storeKey] = { id: id, dir: f.dir || 'desc' };
+      }
+      writeSort(storeKey, S.sort[storeKey]);
+      repaint();
+      onChange();
+    });
+    repaint();
+  }
+
+  /* A 股触发明细的排序字段（前 4 项为用户明确要做排序的口径） */
+  const TRIG_SORTS = [
+    { id: 'dev', label: '偏离', key: (r) => r.dev_pct, abs: true, dir: 'asc' },
+    { id: 'chg', label: '涨跌幅', key: (r) => r.chg_pct, dir: 'desc' },
+    { id: 'price', label: '股价', key: (r) => r.price, dir: 'desc' },
+    { id: 'mv', label: '市值', key: (r) => r.mv_float_yi, dir: 'desc' },
+    { id: 'amt', label: '成交额', key: (r) => r.amount_wan, dir: 'desc' },
+    { id: 'vr', label: '量比', key: (r) => r.amt_ratio, dir: 'desc' },
+    { id: 'to', label: '换手率', key: (r) => r.turnover, dir: 'desc' },
+    { id: 'ev', label: '年内上穿', key: (r) => r.a_events_1y, dir: 'desc' },
+    { id: 'ind', label: '行业', key: (r) => r.industry, dir: 'asc' },
+  ];
+
+  /* 期货品种共用一套排序（触发列表与全品种列表各记一份选择） */
+  const FUT_SORTS = [
+    { id: 'dev', label: '偏离', key: (r) => r.dev_pct, abs: true, dir: 'asc' },
+    { id: 'price', label: '加权价', key: (r) => r.price, dir: 'desc' },
+    { id: 'oi', label: '持仓量', key: (r) => r.oi_sum, dir: 'desc' },
+    { id: 'ev', label: '年内上穿', key: (r) => r.up_cnt_1y, dir: 'desc' },
+    { id: 'sec', label: '板块', key: (r) => r.sector, dir: 'asc' },
+  ];
+
+  /* 排序字段若不在行内固定展示，就在副标题里补一项，
+     否则用户看不出「凭什么这样排」 */
+  const extraTxt = (id, r) => {
+    if (id === 'mv') return '市值 ' + yi(r.mv_float_yi);
+    if (id === 'amt') return '成交额 ' + amtWan(r.amount_wan);
+    if (id === 'to') return '换手 ' + num(r.turnover, 2) + '%';
+    if (id === 'oi') return '持仓 ' + oiTxt(r.oi_sum);
+    return null;
+  };
+
+  function extraSpan(id, r) {
+    const t = extraTxt(id, r);
+    return t ? '<span>' + esc(t) + '</span>' : '';
+  }
+
+  /** 元 → 万元/亿元（腾讯成交额原始单位为万元） */
+  function amtWan(w) {
+    if (w == null || isNaN(w) || !w) return '—';
+    return w >= 10000 ? (w / 10000).toFixed(2) + ' 亿' : Math.round(w) + ' 万';
+  }
+
+  /** 持仓量（手）→ 手/万手 */
+  function oiTxt(v) {
+    if (v == null || isNaN(v) || !v) return '—';
+    return v >= 10000 ? (v / 10000).toFixed(1) + ' 万手' : Math.round(v) + ' 手';
   }
 
   /* ------------------------------------------------ 图表守卫
@@ -77,50 +219,16 @@
     throw err || new Error('加载失败：' + name);
   }
 
-  async function loadWeekly() {
-    if (S.weekly) return S.weekly;
-    if (S.weeklyLoading) return S.weeklyLoading;
-    S.weeklyLoading = (async () => {
-      const urls = [REMOTE + '/weekly.json?_=' + Date.now(), './weekly.json'];
-      for (const u of urls) {
-        try {
-          const r = await fetch(u, { cache: 'no-store' });
-          if (!r.ok) continue;
-          S.weekly = await r.json();
-          return S.weekly;
-        } catch (e) { /* 试下一个 */ }
-      }
-      throw new Error('周线数据加载失败');
-    })();
-    return S.weeklyLoading;
-  }
-
-  /** 取某只股票的周线序列 [{week, close}, ...] */
-  function weeklySeries(code) {
-    if (!S.weekly) return null;
-    const st = S.weekly.stocks && S.weekly.stocks[code];
-    if (!st) return null;
-    const weeks = S.weekly.weeks;
-    const out = [];
-    if (st.b !== undefined) {
-      for (let k = 0; k < st.c.length; k++) out.push({ week: weeks[st.b + k], close: st.c[k] });
-    } else {
-      for (let k = 0; k < st.c.length; k++) out.push({ week: weeks[st.i[k]], close: st.c[k] });
-    }
-    return out;
-  }
-
-  /* ------------------------------------------------ 单股周线（按需、前复权）
-     整包 weekly.json 有 4MB+，国内访问 raw.githubusercontent 基本拉不完，
-     所以点开图表时只取这一只股票的周线（几 KB，国内 CDN 秒开，前复权口径），
-     失败才退回整合包。 */
+  /* ------------------------------------------------ 单股/单品种周线（按需、前复权）
+     整包 weekly.json（4MB+）已于 v1.2.1 停用——国内访问 raw.githubusercontent
+     基本拉不完，点开股票会一直转圈。现在只取这一只的周线（几 KB，前复权口径，
+     与行情软件显示一致），失败就直接提示，不再做整包回退。 */
   const WK_URL = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=';
 
   async function fetchWeeklyOne(code, fq) {
     fq = (fq === undefined || fq === null) ? 'qfq' : fq;   // 默认前复权（看盘口径）
-    if (!S.weeklyOne) S.weeklyOne = {};
     const key = code + '|' + fq;
-    if (S.weeklyOne[key]) return S.weeklyOne[key];
+    if (S.one[key]) return S.one[key];
     const sec = code.replace('.', '');
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 9000);
@@ -140,7 +248,7 @@
       const out = bars.filter((b) => b && b.length >= 3)
         .map((b) => ({ week: b[0], close: +b[2] }));
       if (!out.length) throw new Error('无周线数据');
-      S.weeklyOne[key] = out;
+      S.one[key] = out;
       return out;
     } finally { clearTimeout(timer); }
   }
@@ -262,21 +370,31 @@
         nextScanMetric() +
       '</div>';
 
-    // 列表
+    mountSort('trig', 'trigSort', TRIG_SORTS, renderTrigs);
+    renderTrigs();
+  }
+
+  /** 今日触发明细列表（排序变化时单独重画，不动 Hero） */
+  function renderTrigs() {
+    const rows = (S.data && S.data.triggers && S.data.triggers.rows) || [];
     const list = $('trigList');
     list.innerHTML = '';
-    $('trigHint').textContent = rows.length
-      ? '共 ' + rows.length + ' 只 · 点击查看周 K 与买卖点' : '';
     if (!rows.length) {
+      $('trigHint').textContent = '';
       list.appendChild(el('div', 'empty',
         '<div class="big">◌</div>当日暂无标的触及 60 周线。<br>盘中扫描时刻：10:05 / 11:05 / 14:05 / 14:55'));
       $('trigNote').textContent = '';
       return;
     }
-    rows.forEach((r, i) => list.appendChild(trigRow(r, i)));
+    const st = S.sort.trig;
+    const sorted = sortRows(rows, TRIG_SORTS, st);
+    $('trigHint').textContent =
+      '共 ' + rows.length + ' 只 · ' + sortTip(curField(TRIG_SORTS, st), st.dir);
+    sorted.forEach((r, i) => list.appendChild(trigRow(r, i)));
     $('trigNote').innerHTML =
       '口径：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
-      '「偏离」＝ 现价相对 60 周线的乖离；「量比」＝ 今日成交额 / 近 20 日均成交额。';
+      '「偏离」＝ 现价相对 60 周线的乖离；「量比」＝ 今日成交额 / 近 20 日均成交额。' +
+      '切换排序后，若该字段平时不显示，会临时补在编号行里。';
   }
 
   function trigRow(r, i) {
@@ -290,6 +408,7 @@
           '<span>量比 ' + num(r.amt_ratio, 2) + '</span>' +
           '<span>年内上穿 ' + num(r.a_events_1y, 0) + ' 次</span>' +
           '<span class="' + devCls + '">偏离 ' + pct(r.dev_pct, 2) + '</span>' +
+          extraSpan(S.sort.trig.id, r) +
         '</div>' +
       '</div>' +
       '<div class="r">' +
@@ -335,6 +454,7 @@
           '<span class="' + (r.dev_pct > 0 ? 'up' : 'down') + '">偏离 ' +
             pct(r.dev_pct * 100, 2) + '</span>' +
           '<span>年内上穿 ' + num(r.up_cnt_1y, 0) + ' 次</span>' +
+          extraSpan(S.sort.fut.id, r) +
         '</div>' +
       '</div>' +
       '<div class="r">' +
@@ -345,15 +465,20 @@
     return row;
   }
 
-  function futAllRow(r) {
+  function futAllRow(r, i) {
     const row = el('div', 'row tap');
     const st = r.near ? futTag(r.status) : '<span class="tag">—</span>';
     row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
       '<div class="grow">' +
         '<div class="t1">' + esc(r.name) + '加权 ' + st +
           ' <span class="tag">' + esc(r.sector) + '</span></div>' +
         '<div class="t2"><span class="code">' + esc(r.code) + '</span>' +
-          '<span>' + esc(r.market) + '</span></div>' +
+          '<span>' + esc(r.market) + '</span>' +
+          '<span>60 周线 ' + futPrice(r.ma60) + '</span>' +
+          '<span>年内上穿 ' + num(r.up_cnt_1y, 0) + ' 次</span>' +
+          extraSpan(S.sort.futall.id, r) +
+        '</div>' +
       '</div>' +
       '<div class="r">' +
         '<div class="p">' + futPrice(r.price) + '</div>' +
@@ -363,6 +488,44 @@
     if (r.chart) row.addEventListener('click', () => openFutKline(r.code, r.name));
     else row.classList.remove('tap');
     return row;
+  }
+
+  /** 期货触发列表（排序变化时单独重画） */
+  function renderFutList() {
+    const d = S.fut || {};
+    const rows = d.rows || [];
+    const list = $('futList');
+    list.innerHTML = '';
+    if (!rows.length) {
+      $('futHint').textContent = '';
+      list.appendChild(el('div', 'empty',
+        '<div class="big">◌</div>今日暂无期货品种靠近 60 周线。'));
+      return;
+    }
+    const st = S.sort.fut;
+    $('futHint').textContent =
+      '共 ' + rows.length + ' 个 · ' + sortTip(curField(FUT_SORTS, st), st.dir);
+    sortRows(rows, FUT_SORTS, st).forEach((r, i) => list.appendChild(futRow(r, i)));
+  }
+
+  /** 期货全品种列表 */
+  function renderFutAll() {
+    const d = S.fut || {};
+    const all = d.all || [];
+    const hp = d.health || {};
+    const list = $('futAllList');
+    list.innerHTML = '';
+    const st = S.sort.futall;
+    $('futAllHint').textContent =
+      all.length + ' 个品种 · ' + sortTip(curField(FUT_SORTS, st), st.dir);
+    sortRows(all, FUT_SORTS, st).forEach((r, i) => list.appendChild(futAllRow(r, i)));
+    const covered = hp.covered || all.length;
+    const total = hp.total || all.length;
+    $('futAllNote').innerHTML = covered < total
+      ? '已纳入 <b>' + covered + '</b> / ' + total + ' 个品种；' +
+        '其余品种历史合约不足 61 周（新上市品种），每周自动重试。'
+      : '全部 <b>' + total + '</b> 个品种均在扫描范围内（上期所 20 · 大商所 23 · ' +
+        '郑商所 26 · 上能源 5 · 中金所 8）。';
   }
 
   async function renderFutures() {
@@ -405,15 +568,11 @@
           '<div class="x">Σ(收盘×持仓) / Σ(持仓)，无换月跳空</div></div>' +
       '</div>';
 
-    const list = $('futList');
-    list.innerHTML = '';
-    $('futHint').textContent = rows.length ? '共 ' + rows.length + ' 个 · 点击查看加权周 K' : '';
-    if (!rows.length) {
-      list.appendChild(el('div', 'empty',
-        '<div class="big">◌</div>今日暂无期货品种靠近 60 周线。'));
-    } else {
-      rows.forEach((r, i) => list.appendChild(futRow(r, i)));
-    }
+    mountSort('fut', 'futSort', FUT_SORTS, renderFutList);
+    mountSort('futall', 'futAllSort', FUT_SORTS, renderFutAll);
+    renderFutList();
+    renderFutAll();
+
     $('futNote').innerHTML =
       '口径：<b>突破</b>＝上一交易日加权收盘 &lt; 60 周线 且 当前加权价 ≥ 60 周线；' +
       '<b>临近</b>＝未上穿但与 60 周线的偏离在 ±' +
@@ -421,18 +580,6 @@
       '「加权」＝该品种全部在市合约按<b>持仓量</b>加权（' +
       'Σ(收盘×持仓量) / Σ(持仓量)），与文华/东财的「XX加权」同口径，' +
       '不会像主力连续那样在换月时跳空。';
-
-    const allList = $('futAllList');
-    allList.innerHTML = '';
-    $('futAllHint').textContent = '按与 60 周线的偏离排序';
-    all.forEach((r) => allList.appendChild(futAllRow(r)));
-    const covered = hp.covered || all.length;
-    const total = hp.total || all.length;
-    $('futAllNote').innerHTML = covered < total
-      ? '已纳入 <b>' + covered + '</b> / ' + total + ' 个品种；' +
-        '其余品种历史合约不足 61 周（新上市品种），每周自动重试。'
-      : '全部 <b>' + total + '</b> 个品种均在扫描范围内（上期所 20 · 大商所 23 · ' +
-        '郑商所 26 · 上能源 5 · 中金所 8）。';
   }
 
   async function openFutKline(code, name) {
@@ -688,15 +835,7 @@
     $('chartBuy').style.display = '';
     $('chartSell').style.display = '';
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
-    // 快速路径：单股前复权周线；样本不足 61 根（新股）或失败时退回整合包
-    let series = await fetchWeeklyOne(code).catch(() => null);
-    if (!series || series.length < 61) {
-      try {
-        await loadWeekly();
-        const s2 = weeklySeries(code);
-        if (s2 && s2.length) series = s2;
-      } catch (e) { /* 保留快速路径结果 */ }
-    }
+    const series = await fetchWeeklyOne(code).catch(() => null);
     if (!series || !series.length) {
       $('kChart').innerHTML =
         '<div class="empty">周线数据获取失败<br>请检查网络后重试</div>';
@@ -729,7 +868,8 @@
     const closes = series.map((d) => d.close);
     const m60 = ma(closes, 60);
 
-    const marks = (window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code)) || { buys: [], sells: [], holds: [] };
+    const marks = (window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code, weeks)) ||
+                  { buys: [], sells: [] };
     const buyPts = marks.buys.map((m) => ({
       name: 'B', coord: [m.week, m.price],
       value: 'B', symbol: 'pin', symbolSize: 34,
@@ -877,12 +1017,10 @@
 
   window.WB = {
     S: S, $: $, el: el, esc: esc, num: num, pct: pct, cls: cls, metric: metric,
-    loadJSON: loadJSON, loadWeekly: loadWeekly, weeklySeries: weeklySeries,
-    fetchWeeklyOne: fetchWeeklyOne,
+    loadJSON: loadJSON, fetchWeeklyOne: fetchWeeklyOne,
     fetchQuotes: fetchQuotes, refreshQuotes: refreshQuotes,
-    openKline: openKline, ma: ma, timeAgo: timeAgo, yi: yi, wan: wan,
-    renderFutures: renderFutures, openFutKline: openFutKline,
-    REPO: REPO, REMOTE: REMOTE, QIMG: QIMG,
+    openKline: openKline, ma: ma, timeAgo: timeAgo, yi: yi,
+    REPO: REPO, REMOTE: REMOTE,
     closeTrade: closeTrade,
   };
 

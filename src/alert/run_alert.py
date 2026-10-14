@@ -32,8 +32,9 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "output" / "alert"
 PENDING = OUT / "pending.json"
 PENDING_CSV = OUT / "pending.csv"
-MSG_FIELDS = ["name", "price", "preclose", "chg_pct", "dev_pct", "slope",
-              "alignment", "a_events_1y", "industry", "mv_float_yi", "amt_ratio"]
+# 进入推送文案与看板的字段（看板排序也依赖这里的成交额/换手率/市值）
+MSG_FIELDS = ["name", "price", "chg_pct", "dev_pct", "slope", "a_events_1y",
+              "industry", "mv_float_yi", "amount_wan", "turnover", "amt_ratio"]
 
 
 # ---------------------------------------------------------------- 通用
@@ -206,14 +207,14 @@ def _record_dashboard_state(n_rows: int, trig, snap_size: int, mode: str,
                     "code": code,
                     "name": str(r["name"]),
                     "price": round(float(r["price"]), 3),
-                    "preclose": round(float(r["preclose"]), 3),
                     "chg_pct": round(float(r["chg_pct"]), 2),
                     "dev_pct": round(float(r["dev_pct"]) * 100, 3),
                     "slope": str(r["slope"]),
-                    "alignment": str(r["alignment"]),
                     "a_events_1y": int(r["a_events_1y"]),
                     "industry": str(r["industry"]),
                     "mv_float_yi": round(float(r["mv_float_yi"]), 1),
+                    "amount_wan": round(float(r["amount_wan"]), 1),
+                    "turnover": round(float(r["turnover"]), 2),
                     "amt_ratio": round(float(r["amt_ratio"]), 2),
                 })
             except Exception as exc:  # noqa: BLE001

@@ -2,9 +2,9 @@
 
 接口：http://qt.gtimg.cn/q=sh600519,sz000001,...（GBK 编码，~ 分隔）
 关键字段（实测 2026-10-14）：
-  [1]名称 [2]代码 [3]现价 [4]昨收 [5]今开 [6]成交量(手)
-  [30]时间戳 YYYYMMDDHHMMSS [31]涨跌 [32]涨跌% [37]成交额(万)
-  [38]换手率 [44]流通市值(亿) [45]总市值(亿)
+  [1]名称 [2]代码 [3]现价 [4]昨收 [6]成交量(手)
+  [30]时间戳 YYYYMMDDHHMMSS [32]涨跌% [37]成交额(万元)
+  [38]换手率(%) [44]流通市值(亿) [45]总市值(亿)
 注意：退市股返回冻结数据（时间戳陈旧、成交量 0），由调用方用 universe 状态过滤。
 """
 from __future__ import annotations
@@ -19,8 +19,10 @@ URL = "http://qt.gtimg.cn/q="
 _CHUNK = 80
 _TIMEOUT = 10
 
-_COLUMNS = ["code", "name", "price", "preclose", "open", "vol_hand",
-            "ts", "chg_pct", "amount_wan", "turnover", "mv_float_yi"]
+# 只保留有下游消费者的字段（scanner 用 price/preclose/amount_wan、
+# run_alert 用 mv_float_yi/turnover、build_quotes 用 price/preclose/ts）
+_COLUMNS = ["code", "name", "price", "preclose", "ts", "chg_pct",
+            "amount_wan", "turnover", "mv_float_yi"]
 
 
 def _to_tencent(code: str) -> str:
@@ -46,8 +48,6 @@ def _parse(raw_text: str) -> list[dict]:
             "name": p[1],
             "price": float(p[3] or 0),
             "preclose": float(p[4] or 0),
-            "open": float(p[5] or 0),
-            "vol_hand": float(p[6] or 0),
             "ts": p[30],
             "chg_pct": float(p[32] or 0),
             "amount_wan": float(p[37] or 0),

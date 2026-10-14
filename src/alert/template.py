@@ -60,13 +60,15 @@ def build_message(trig, mode: str, chart_urls: dict | None = None) -> tuple[str,
         ind = "未知" if ind is None or (isinstance(ind, float) and ind != ind) else str(ind)
         vr = r.get("amt_ratio")
         vr_txt = f"｜量比(额) {vr:.1f}x" if np_finite(vr) else ""
+        tn = r.get("turnover")
+        tn_txt = f"｜换手 {tn:.1f}%" if np_finite(tn) else ""
         cnt = int(r.get("a_events_1y", 0))
         first = "是" if cnt == 0 else f"否（近一年已{cnt}次）"
         lines.append(
             f"**{r['name']} {code}**  {_bucket(mv) if mv else '—'}｜{ind}\n"
             f"现价 {r['price']:.2f}（{r['chg_pct']:+.2f}%）"
             f"｜超越60周线 {r['dev_pct']*100:+.1f}%{vr_txt}\n"
-            f"60周线 {r['slope']}｜均线 {r['alignment']}｜近一年首次上穿：{first}"
+            f"60周线 {r['slope']}{tn_txt}｜近一年首次上穿：{first}"
             + (f"\n\n![周K]({chart_urls[code]})" if chart_urls and code in chart_urls else "")
             + f"\n👉 {ths_links(code)}"
         )
