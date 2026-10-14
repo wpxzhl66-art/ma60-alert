@@ -154,8 +154,8 @@ def run_test():
     print("测试推送", "成功" if key_ok else "失败")
 
 
-def run_demo():
-    snap, trig = _evaluate(cloud=False, demo=True, force_snapshot=False)
+def run_demo(cloud: bool = False):
+    snap, trig = _evaluate(cloud=cloud, demo=True, force_snapshot=False)
     print(f"[demo] 模拟全市场+2%：触发 {len(trig)} 只")
     if len(trig):
         print(trig[MSG_FIELDS].head(20).round(3).to_string())
@@ -186,8 +186,9 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "scan"):
             from .chart import render_weekly_chart
             wmap = _store_weekly_map() if cloud else None
             for code in trig_out.index:
-                weekly = (wmap or {}).get(code) or (
-                    _local_weekly(code) if not cloud else None)
+                weekly = wmap.get(code) if wmap else None
+                if weekly is None and not cloud:
+                    weekly = _local_weekly(code)
                 if weekly is None:
                     continue
                 name = str(trig_out.at[code, "name"])
@@ -259,8 +260,6 @@ def main():
         run_update()
     elif a.daemon:
         run_daemon()
-    elif a.demo:
-        run_demo()
     elif a.is_trading_day:
         raise SystemExit(run_is_trading_day())
     elif a.prepare:
@@ -269,6 +268,8 @@ def main():
         run_notify(a.sha)
     elif a.update_cloud:
         run_update_cloud()
+    elif a.demo:
+        run_demo(cloud=a.cloud)
     else:
         print(__doc__)
 

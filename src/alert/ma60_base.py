@@ -80,13 +80,15 @@ def stock_from_weekly(code: str, weekly: pd.Series,
 
 
 def _industry_map() -> dict:
+    # 云端优先读 store/（已随代码入库）；本地回退 data/
     for cand in ("industry_sw.csv.gz", "industry.csv.gz"):
-        p = DATA / cand
-        if p.exists():
-            d = pd.read_csv(p, dtype=str)
-            c_code = "code" if "code" in d.columns else d.columns[1]
-            c_ind = "industry_sw" if "industry_sw" in d.columns else "industry"
-            return dict(zip(d[c_code].astype(str), d[c_ind].astype(str)))
+        for base in (ROOT / "store", DATA):
+            p = base / cand
+            if p.exists():
+                d = pd.read_csv(p, dtype=str)
+                c_code = "code" if "code" in d.columns else d.columns[1]
+                c_ind = "industry_sw" if "industry_sw" in d.columns else "industry"
+                return dict(zip(d[c_code].astype(str), d[c_ind].astype(str)))
     return {}
 
 
