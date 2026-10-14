@@ -16,7 +16,7 @@
       <div class="sub" id="subTitle">正在加载…</div>
     </div>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.3.1</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.4.0</span>
   </div>
 </header>
 
@@ -38,6 +38,37 @@
         <div class="loading"><span class="spinner"></span></div>
       </div>
       <div class="note" id="trigNote"></div>
+    </div>
+  </section>
+
+  <!-- ==================== 期货 ==================== -->
+  <section class="tabpane" id="pane-futures">
+    <div class="card" id="futHero">
+      <div class="loading"><span class="spinner"></span></div>
+    </div>
+
+    <div class="section-label">触发品种</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>靠近 60 周线的期货品种加权</h2>
+        <div class="hint" id="futHint">—</div>
+      </div>
+      <div class="list" id="futList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="note" id="futNote"></div>
+    </div>
+
+    <div class="section-label">全部品种</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>各品种加权与 60 周线的距离</h2>
+        <div class="hint" id="futAllHint"></div>
+      </div>
+      <div class="list" id="futAllList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="note" id="futAllNote"></div>
     </div>
   </section>
 
@@ -139,6 +170,7 @@
 <nav class="tabbar">
   <div class="inner">
     <button class="on" data-tab="today"><span class="ico">◎</span>今日</button>
+    <button data-tab="futures"><span class="ico">◈</span>期货</button>
     <button data-tab="system"><span class="ico">☰</span>运行</button>
     <button data-tab="account"><span class="ico">¥</span>账户</button>
   </div>
@@ -225,7 +257,10 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<!-- 图表库：优先本地（随站点一起发布，国内可达），失败再退公共 CDN。
+     2026-10 实测 cdn.jsdelivr.net 在部分网络下不可达，会导致整页图表初始化失败。 -->
+<script src="./vendor/echarts.min.js"
+        onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script src="app.js"></script>
 <script src="account.js"></script>

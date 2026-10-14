@@ -284,10 +284,24 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
     if not demo:
         _record_dashboard_state(len(trig_all), trig_all if len(trig_all) else None,
                                 len(snap), "demo" if demo else mode, quotes)
+        # 期货加权指数的当日触发（独立板块，共用推送额度）
+        try:
+            from . import fut_alert
+            fut_alert.record_state()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[fut] 状态记录失败: {type(exc).__name__} {exc}")
 
 
 def run_notify(sha: str):
-    """云端第三段：读 pending，组装带 commit-sha 的图表 URL 并推送。"""
+    """云端第三段：读 pending，组装带 commit-sha 的图表 URL 并推送。
+
+    A 股与期货共用同一条消息与每日额度：
+      * A 股有触发 → 期货作为一节追加在末尾
+      * A 股无触发而期货有 → 单独推一条期货主题
+      * 两边都无 → 不推送（省额度）
+    """
+    from . import fut_alert
+
     if not PENDING.exists():
         print("[notify] 无 pending，跳过")
         return
@@ -302,15 +316,35 @@ def run_notify(sha: str):
         title, desp = template.build_message(trig, res["mode"], chart_urls)
     else:
         title, desp = template.build_message(trig, res["mode"])
+
+    fut_txt, fut_codes = fut_alert.build_section()
+    if fut_txt:
+        if res["n"]:
+            desp = desp + "\n\n---\n\n" + fut_txt
+        else:
+            title = f"【期货60周线】{len(fut_codes)} 个品种靠近加权均线"
+            desp = fut_txt
+    elif not res["n"]:
+        print("[notify] A 股与期货均无新触发，跳过推送（不占额度）")
+        return
+
     if pusher.send(title, desp):
         if trig is not None:
             scanner.mark_pushed(trig.index.tolist(), res["mode"])
+        if fut_codes:
+            fut_alert.mark_pushed(fut_codes)
         print(f"[notify] 已推送：{title}")
 
 
 def run_update_cloud():
     from .cloud_store import update_from_baostock
     update_from_baostock()
+    # 期货加权指数（独立数据仓 store/fut/）：失败不影响 A 股数据仓
+    try:
+        from fut import core as fcore
+        fcore.update()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[fut] 期货增量更新失败（不影响 A 股）：{type(exc).__name__} {exc}")
 
 
 def main():

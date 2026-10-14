@@ -168,6 +168,9 @@ a { color: var(--blue); text-decoration: none; }
 .tag.up { background: var(--up-bg); }
 .tag.down { background: var(--down-bg); }
 .tag.orange { background: var(--orange-bg); color: var(--orange); }
+/* 期货板块：突破（已上穿 60 周线）/ 临近（在均线附近但未上穿） */
+.tag.bo { background: var(--up-bg); color: var(--up); font-weight: 650; }
+.tag.near { background: var(--orange-bg); color: var(--orange); font-weight: 650; }
 
 .empty { padding: 34px 16px; text-align: center; color: var(--text3); font-size: 13.5px; }
 .empty .big { font-size: 30px; margin-bottom: 8px; opacity: .5; }

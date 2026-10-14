@@ -11,7 +11,7 @@
   const QIMG = 'https://raw.githubusercontent.com/' + REPO + '/main/charts';
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.3.1';
+  const APP_VERSION = 'v1.4.0';
 
   const S = {
     data: null,        // data.json
@@ -21,6 +21,8 @@
     weeklyLoading: null,
     weeklyOne: {},     // 单股周线缓存（按需拉取）
     codeIndex: null,   // 搜索用
+    fut: null,         // fut.json：期货加权指数板块（切到该页才拉）
+    futLoading: null,
   };
 
   /* ------------------------------------------------ 工具 */
@@ -48,6 +50,17 @@
     if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
     if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
     return Math.floor(s / 86400) + ' 天前';
+  }
+
+  /* ------------------------------------------------ 图表守卫
+     ECharts 来自本地 vendor/（随站点发布），万一加载失败也不能拖垮整页：
+     列表、指标照常渲染，只把图表区域换成提示。 */
+  function initChart(node) {
+    if (typeof window.echarts === 'undefined') {
+      node.innerHTML = '<div class="empty">图表库未加载<br>请检查网络后刷新</div>';
+      return null;
+    }
+    return window.echarts.init(node);
   }
 
   /* ------------------------------------------------ 数据加载 */
@@ -287,6 +300,225 @@
     return row;
   }
 
+  /* ------------------------------------------------ 视图：期货
+     期货品种的「持仓量加权指数」，与 A 股分开成独立板块。
+     加权口径：加权价 = Σ(合约收盘 × 合约持仓量) / Σ(持仓量)。
+     数据由云端每日合成后写入 dashboard/fut.json，切到本页才按需加载。 */
+  function loadFutures() {
+    if (S.fut) return Promise.resolve(S.fut);
+    if (S.futLoading) return S.futLoading;
+    S.futLoading = loadJSON('fut.json').then((d) => { S.fut = d; return d; })
+      .catch((e) => { S.futLoading = null; throw e; });
+    return S.futLoading;
+  }
+
+  function futPrice(v) {
+    if (v == null || isNaN(v)) return '—';
+    const a = Math.abs(v);
+    return Number(v).toFixed(a >= 1000 ? 1 : a >= 100 ? 2 : 3);
+  }
+
+  function futTag(st) {
+    return st === '突破' ? '<span class="tag bo">突破</span>'
+                         : '<span class="tag near">临近</span>';
+  }
+
+  function futRow(r, i) {
+    const row = el('div', 'row tap');
+    row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="grow">' +
+        '<div class="t1">' + esc(r.name) + '加权 ' + futTag(r.status) +
+          ' <span class="tag">' + esc(r.sector) + '</span></div>' +
+        '<div class="t2"><span class="code">' + esc(r.code) + '</span>' +
+          '<span>60 周线 ' + futPrice(r.ma60) + '</span>' +
+          '<span class="' + (r.dev_pct > 0 ? 'up' : 'down') + '">偏离 ' +
+            pct(r.dev_pct * 100, 2) + '</span>' +
+          '<span>年内上穿 ' + num(r.up_cnt_1y, 0) + ' 次</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="r">' +
+        '<div class="p">' + futPrice(r.price) + '</div>' +
+        '<div class="s muted">' + esc(r.slope) + '</div>' +
+      '</div>';
+    row.addEventListener('click', () => openFutKline(r.code, r.name));
+    return row;
+  }
+
+  function futAllRow(r) {
+    const row = el('div', 'row tap');
+    const st = r.near ? futTag(r.status) : '<span class="tag">—</span>';
+    row.innerHTML =
+      '<div class="grow">' +
+        '<div class="t1">' + esc(r.name) + '加权 ' + st +
+          ' <span class="tag">' + esc(r.sector) + '</span></div>' +
+        '<div class="t2"><span class="code">' + esc(r.code) + '</span>' +
+          '<span>' + esc(r.market) + '</span></div>' +
+      '</div>' +
+      '<div class="r">' +
+        '<div class="p">' + futPrice(r.price) + '</div>' +
+        '<div class="s ' + (r.dev_pct > 0 ? 'up' : 'down') + '">' +
+          pct(r.dev_pct * 100, 2) + '</div>' +
+      '</div>';
+    if (r.chart) row.addEventListener('click', () => openFutKline(r.code, r.name));
+    else row.classList.remove('tap');
+    return row;
+  }
+
+  async function renderFutures() {
+    const hero = $('futHero');
+    hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载期货加权数据…</div>';
+    let d;
+    try {
+      d = await loadFutures();
+    } catch (e) {
+      hero.innerHTML = '<div class="banner err">期货数据加载失败：' + esc(e.message) +
+        '<br><br>请确认仓库已推送 dashboard/fut.json。</div>';
+      $('futList').innerHTML = '';
+      $('futAllList').innerHTML = '';
+      return;
+    }
+    const rows = d.rows || [];
+    const all = d.all || [];
+    const hp = d.health || {};
+    const breakouts = rows.filter((r) => r.status === '突破');
+    const nears = rows.filter((r) => r.status !== '突破');
+
+    hero.innerHTML =
+      '<div class="metrics c2">' +
+        '<div class="metric hero"><div class="k">今日触发（加权价格 vs 60 周线）</div>' +
+          '<div class="v up">' + rows.length +
+            ' <span style="font-size:15px;font-weight:600">个品种</span></div>' +
+          '<div class="x">' + esc(d.day || '—') +
+            ' · 覆盖 ' + (hp.covered || all.length) + ' / ' + (hp.total || all.length) +
+            ' 个品种' + (d.ts ? ' · ' + esc(d.ts.slice(5, 16).replace('T', ' ')) : '') + '</div>' +
+        '</div>' +
+        '<div class="metric"><div class="k">上穿突破</div>' +
+          '<div class="v sm up">' + breakouts.length + ' 个</div>' +
+          '<div class="x">上一交易日在此线下方、当前已上穿</div></div>' +
+        '<div class="metric"><div class="k">临近（±' +
+          ((d.near_pct || 0.03) * 100).toFixed(0) + '%）</div>' +
+          '<div class="v sm">' + nears.length + ' 个</div>' +
+          '<div class="x">尚未上穿，但已在 60 周线附近</div></div>' +
+        '<div class="metric"><div class="k">加权口径</div>' +
+          '<div class="v sm">持仓量加权</div>' +
+          '<div class="x">Σ(收盘×持仓) / Σ(持仓)，无换月跳空</div></div>' +
+      '</div>';
+
+    const list = $('futList');
+    list.innerHTML = '';
+    $('futHint').textContent = rows.length ? '共 ' + rows.length + ' 个 · 点击查看加权周 K' : '';
+    if (!rows.length) {
+      list.appendChild(el('div', 'empty',
+        '<div class="big">◌</div>今日暂无期货品种靠近 60 周线。'));
+    } else {
+      rows.forEach((r, i) => list.appendChild(futRow(r, i)));
+    }
+    $('futNote').innerHTML =
+      '口径：<b>突破</b>＝上一交易日加权收盘 &lt; 60 周线 且 当前加权价 ≥ 60 周线；' +
+      '<b>临近</b>＝未上穿但与 60 周线的偏离在 ±' +
+      ((d.near_pct || 0.03) * 100).toFixed(0) + '% 之内。' +
+      '「加权」＝该品种全部在市合约按<b>持仓量</b>加权（' +
+      'Σ(收盘×持仓量) / Σ(持仓量)），与文华/东财的「XX加权」同口径，' +
+      '不会像主力连续那样在换月时跳空。';
+
+    const allList = $('futAllList');
+    allList.innerHTML = '';
+    $('futAllHint').textContent = '按与 60 周线的偏离排序';
+    all.forEach((r) => allList.appendChild(futAllRow(r)));
+    const covered = hp.covered || all.length;
+    const total = hp.total || all.length;
+    $('futAllNote').innerHTML = covered < total
+      ? '已纳入 <b>' + covered + '</b> / ' + total + ' 个品种；' +
+        '其余品种历史合约不足 61 周（新上市品种），每周自动重试。'
+      : '全部 <b>' + total + '</b> 个品种均在扫描范围内（上期所 20 · 大商所 23 · ' +
+        '郑商所 26 · 上能源 5 · 中金所 8）。';
+  }
+
+  async function openFutKline(code, name) {
+    kContext = { code: code, name: name, kind: 'fut' };
+    $('chartTitle').textContent = name + '加权 · 周 K';
+    $('chartMask').classList.add('show');
+    $('chartBuy').style.display = 'none';
+    $('chartSell').style.display = 'none';
+    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
+    let d = S.fut;
+    if (!d) { try { d = await loadFutures(); } catch (e) { d = null; } }
+    const r = d && (d.rows || []).concat(d.all || []).find((x) => x.code === code);
+    if (!r || !r.wk || !r.wk.length) {
+      $('kChart').innerHTML =
+        '<div class="empty">该品种周线数据缺失<br>（历史合约不足 61 周）</div>';
+      return;
+    }
+    renderFutKline(r);
+    renderFutStats(r);
+  }
+
+  function renderFutKline(r) {
+    const node = $('kChart');
+    if (kChart && !kChart.isDisposed()) kChart.dispose();
+    node.innerHTML = '';
+    kChart = initChart(node);
+    if (!kChart) return;
+    const weeks = r.wk.map((x) => x[0]);
+    const closes = r.wk.map((x) => x[1]);
+    const m60 = ma(closes, 60);
+    kChart.setOption({
+      animation: false,
+      grid: { left: 52, right: 14, top: 22, bottom: 30 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (ps) => {
+          if (!ps || !ps.length) return '';
+          const i = ps[0].dataIndex;
+          let s = weeks[i] + '<br/>加权周收盘 <b>' + futPrice(closes[i]) + '</b>';
+          if (m60[i] != null) s += '<br/>60 周线 ' + futPrice(m60[i]);
+          return s;
+        },
+      },
+      xAxis: {
+        type: 'category', data: weeks, boundaryGap: false,
+        axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+        axisTick: { show: false },
+        axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
+      },
+      yAxis: {
+        type: 'value', scale: true,
+        splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
+        axisLabel: { color: '#8e8e93', fontSize: 10 },
+      },
+      series: [
+        {
+          name: '加权周收盘', type: 'line', data: closes, smooth: false,
+          symbol: 'none', lineStyle: { width: 1.8, color: '#5856d6' },
+          areaStyle: {
+            color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [{ offset: 0, color: 'rgba(88,86,214,.16)' },
+                           { offset: 1, color: 'rgba(88,86,214,0)' }] },
+          },
+        },
+        {
+          name: '60 周线', type: 'line', data: m60, symbol: 'none',
+          lineStyle: { width: 1.8, color: '#ff9500' },
+        },
+      ],
+    });
+    kChart.resize();
+  }
+
+  function renderFutStats(r) {
+    $('chartStats').innerHTML =
+      metric('加权价', futPrice(r.price), r.name + '加权') +
+      metric('60 周线', futPrice(r.ma60), '偏离 ' + pct(r.dev_pct * 100, 2)) +
+      metric('状态', r.status, r.sector + ' · 均线' + r.slope);
+    $('chartNote').innerHTML =
+      '曲线为该品种的<b>持仓量加权价</b>与 <b>60 周均线</b>：' +
+      'Σ(合约收盘 × 合约持仓量) / Σ(持仓量)，覆盖全部在市合约。' +
+      '加权口径不产生换月跳空，因此 60 周线不会被主力换月的价格断崖污染。';
+  }
+
   /* ------------------------------------------------ 视图：运行 */
   function renderSystem() {
     const d = S.data;
@@ -403,7 +635,8 @@
   function drawTrend(tr) {
     const node = $('trendChart');
     if (!tr.length) { node.innerHTML = '<div class="empty">还没有积累足够的扫描记录</div>'; return; }
-    trendChart = trendChart || echarts.init(node);
+    trendChart = trendChart || initChart(node);
+    if (!trendChart) return;
     trendChart.setOption({
       grid: { left: 34, right: 12, top: 16, bottom: 26 },
       tooltip: {
@@ -449,9 +682,11 @@
   let kContext = null;
 
   async function openKline(code, name) {
-    kContext = { code: code, name: name };
+    kContext = { code: code, name: name, kind: 'stock' };
     $('chartTitle').textContent = name + ' · 周 K';
     $('chartMask').classList.add('show');
+    $('chartBuy').style.display = '';
+    $('chartSell').style.display = '';
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
     // 快速路径：单股前复权周线；样本不足 61 根（新股）或失败时退回整合包
     let series = await fetchWeeklyOne(code).catch(() => null);
@@ -488,7 +723,8 @@
     // 复用旧实例会画到已脱离 DOM 的画布上 → 第二次打开看不到图
     if (kChart && !kChart.isDisposed()) kChart.dispose();
     node.innerHTML = '';
-    kChart = echarts.init(node);
+    kChart = initChart(node);
+    if (!kChart) return;
     const weeks = series.map((d) => d.week);
     const closes = series.map((d) => d.close);
     const m60 = ma(closes, 60);
@@ -592,6 +828,7 @@
         $('pane-' + b.dataset.tab).classList.add('on');
         window.scrollTo({ top: 0 });
         if (b.dataset.tab === 'system' && trendChart) setTimeout(() => trendChart.resize(), 50);
+        if (b.dataset.tab === 'futures') renderFutures();   // 懒加载：切到本页才拉 fut.json
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
       });
     });
@@ -644,6 +881,7 @@
     fetchWeeklyOne: fetchWeeklyOne,
     fetchQuotes: fetchQuotes, refreshQuotes: refreshQuotes,
     openKline: openKline, ma: ma, timeAgo: timeAgo, yi: yi, wan: wan,
+    renderFutures: renderFutures, openFutKline: openFutKline,
     REPO: REPO, REMOTE: REMOTE, QIMG: QIMG,
     closeTrade: closeTrade,
   };

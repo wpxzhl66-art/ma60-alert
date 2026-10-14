@@ -602,7 +602,12 @@
 
     node.innerHTML = '';
     if (A.equityChart) { A.equityChart.dispose(); }
-    A.equityChart = echarts.init(node);
+    A.equityChart = (typeof window.echarts === 'undefined') ? null
+      : window.echarts.init(node);
+    if (!A.equityChart) {
+      node.innerHTML = '<div class="empty">图表库未加载<br>请检查网络后刷新</div>';
+      return;
+    }
     A.equityChart.setOption({
       animation: false,
       grid: { left: 52, right: 14, top: 18, bottom: 28 },

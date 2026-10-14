@@ -299,6 +299,113 @@ def _health() -> dict:
     }
 
 
+def build_futures() -> dict:
+    """生成 dashboard/fut.json：期货加权指数的触发清单与全品种概况。
+
+    数据源为 store/fut/（云端每日增量更新）。触发结果优先取最近一次扫描写入的
+    store/state/futures_triggers.json；缺失或过期时按纯日线口径现场重算。
+    """
+    import sys as _sys
+    src_dir = str(ROOT / "src")
+    if src_dir not in _sys.path:
+        _sys.path.insert(0, src_dir)
+    import pandas as pd
+    from alert.config import load
+    from fut import core as fcore
+    from fut import scan as fscan
+    from fut import varieties as fV
+
+    weekly = fcore.load_weekly()
+    daily = fcore.load_daily()
+    today = date.today().isoformat()
+
+    near_pct = 0.03
+    try:
+        near_pct = float(load()["futures"].get("near_pct", 0.03))
+    except Exception:                               # noqa: BLE001
+        pass
+
+    hp = {
+        "covered": int(daily["code"].nunique()) if not daily.empty else 0,
+        "total": len(fV.CODES),
+    }
+    fus = _read_json(STORE / "fut" / "state" / "update_stats.json", {}) or {}
+    hp.update({"ts": fus.get("ts", ""), "source": fus.get("source", ""),
+               "failed": int(fus.get("failed") or 0)})
+
+    # ---- 触发清单 ----
+    rows_df = None
+    st = _read_json(STATE / "futures_triggers.json", {}) or {}
+    if st.get("day") == today and st.get("rows"):
+        rows_df = pd.DataFrame(st["rows"])
+        print(f"      期货触发取用扫描结果：{len(rows_df)} 个品种（{st.get('ts','')}）")
+    if rows_df is None or rows_df.empty:
+        try:
+            rows_df = fscan.evaluate(weekly=weekly, daily=daily,
+                                     use_realtime=True, near_pct=near_pct)
+        except Exception as e:                      # noqa: BLE001
+            print(f"      期货触发即时判定失败：{e}")
+            rows_df = pd.DataFrame()
+
+    # ---- 全品种概况（含实时价，与触发列表同口径）----
+    all_rows: list[dict] = []
+    wk_cache: dict[str, list] = {}
+    snap = None
+    try:
+        snap = fscan.snapshot(near_pct=near_pct, use_realtime=True,
+                             weekly=weekly, daily=daily)
+    except Exception as e:                          # noqa: BLE001
+        print(f"      期货全品种指标计算失败：{e}")
+
+    if not weekly.empty:
+        for sym, g in weekly.groupby("code"):
+            g = g.sort_values("week_end")
+            if len(g) <= 140:
+                wk_cache[sym] = [[str(pd.Timestamp(w).date()), round(float(c), 3)]
+                                 for w, c in zip(g["week_end"], g["close"])]
+            else:
+                wk_cache[sym] = [[str(pd.Timestamp(w).date()), round(float(c), 3)]
+                                 for w, c in zip(g["week_end"].tail(140),
+                                                 g["close"].to_numpy(float)[-140:])]
+
+    if snap is not None and not snap.empty:
+        for rec in snap.to_dict("records"):
+            rec.pop("live", None)
+            rec["near"] = rec.get("status") in ("突破", "临近")
+            all_rows.append(rec)
+    all_rows.sort(key=lambda r: abs(r.get("dev_pct", 0)))
+
+    # ---- 触发品种附上周线序列（供图表按需展示）----
+    rows_out: list[dict] = []
+    if rows_df is not None and len(rows_df):
+        for rec in rows_df.to_dict("records"):
+            sym = rec.get("code")
+            rec = {k: (None if isinstance(v, float) and v != v else v)
+                   for k, v in rec.items()}
+            rec["wk"] = wk_cache.get(sym, [])
+            rows_out.append(rec)
+        # 触发品种带上「可看图」标记（周线只存一份在 rows 里，避免体积翻倍）
+        chartable = {r["code"] for r in rows_out}
+        for r in all_rows:
+            r["chart"] = r["code"] in chartable
+
+    obj = {
+        "generated_at": _now().isoformat(timespec="seconds"),
+        "day": st.get("day") or today,
+        "ts": st.get("ts") or "",
+        "near_pct": near_pct,
+        "rows": rows_out,
+        "all": all_rows,
+        "health": hp,
+        "sectors": fV.SECTORS,
+    }
+    _write_if_changed(OUT / "fut.json", _dump(obj), "fut")
+    nb = sum(1 for r in rows_out if r.get("status") == "突破")
+    print(f"      期货 {len(all_rows)} 个品种可判定 / 触发 {len(rows_out)} 个"
+          f"（突破 {nb}）")
+    return obj
+
+
 def build_data(static_obj: dict | None = None) -> dict:
     latest = _read_json(STATE / "latest_triggers.json", {}) or {}
     push = _read_json(STATE / "push_state.json", {}) or {}
@@ -359,8 +466,10 @@ def main() -> None:
     ap.add_argument("--static", action="store_true")
     ap.add_argument("--quotes", action="store_true")
     ap.add_argument("--data", action="store_true")
+    ap.add_argument("--futures", action="store_true", help="期货板块 fut.json")
     a = ap.parse_args()
-    if not any([a.all, a.daily, a.weekly, a.names, a.static, a.quotes, a.data]):
+    if not any([a.all, a.daily, a.weekly, a.names, a.static, a.quotes, a.data,
+                a.futures]):
         a.all = True
 
     static_obj = None
@@ -372,6 +481,8 @@ def main() -> None:
         build_quotes()
     if a.all or a.daily or a.weekly or a.data:
         build_data(static_obj)
+    if a.all or a.daily or a.weekly or a.futures:
+        build_futures()
 
 
 if __name__ == "__main__":

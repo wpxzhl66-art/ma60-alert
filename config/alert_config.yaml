@@ -27,3 +27,12 @@ jump:
 mktcap_buckets:              # 流通市值档位（亿元，静态口径）
   small_max: 200
   large_min: 800
+
+# 期货板块：国内 82 个品种的「持仓量加权指数」60 周线预警
+# 加权口径 Σ(收盘×持仓量)/Σ(持仓量)，与文华/东财「XX加权」同源，无换月跳空
+futures:
+  enabled: true
+  near_pct: 0.03             # 「临近」判定：加权价与 60 周线偏离在 ±3% 以内
+  push: true                 # 期货触发是否推送（与 A 股共用 Server酱每日额度）
+  push_near_max: 5           # 单条消息最多列出的「临近」品种数（突破不限）
+  dedup_weekly: true         # 同一品种同一自然周只推首次
