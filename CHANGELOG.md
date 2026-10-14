@@ -7,6 +7,37 @@
 
 ---
 
+## [预警系统 v1.1.3] — 2026-10-14
+
+### 修复（云端部署实测暴露）
+
+1. **mode 语义统一（intraday / confirm）**
+   - 原 `scan` 值未被推送模板识别 → 盘中扫描被误标为「收盘确认」标题
+   - 影响面：`--mode` 选项值、`run_prepare` 默认值、`_evaluate` 新增 mode 参数、
+     workflow `MODE=intraday`
+
+2. **状态文件云端持久化（架构缺陷）**
+   - 原状态落 `output/alert/*.json`，被 gitignore → 云端每次运行从零开始
+   - 后果：①去重失效（同一只股票一天推 4 次）②每日 5 条额度护栏失效
+   - 修复：`config.py` 新增 `is_cloud()` / `state_dir()`；本地落 `output/alert`，
+     云端（`ALERT_CLOUD=1`）落 `store/state/`；workflow 新增「提交推送状态」步骤
+
+3. **新增 `ALERT_DRYRUN=1` 干跑开关**
+   - 链路验证时不实际发送，避免测试打扰
+
+### 修复（v1.1.1 / v1.1.2，同批）
+- `--demo` 分支优先级高于 `--prepare` → 云端 demo 走本地路径 KeyError
+- `(wmap or {}).get(code)` 对 pandas Series 真值歧义 → 改显式判断
+- 云端无 `output/` 目录 → 写 pending 前 mkdir
+- 申万行业映射精简入库 `store/industry_sw.csv.gz`（17.6KB），云端行业不再「未知」
+
+### 验证
+- 本地：prepare → notify → 二次 prepare 去重全链路通过（48 只 → 0 只）
+- 云端：真实 scan 运行成功，推送标题正确显示「盘中预警」，
+  `store/state/` 成功提交回仓库（跨运行去重生效）
+
+---
+
 ## [预警系统 v1.1.0] — 2026-10-14
 
 ### 新增：GitHub Actions 云端部署 + 推送内嵌周K图
