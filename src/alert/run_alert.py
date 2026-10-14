@@ -74,14 +74,14 @@ def _get_snapshot(force: bool = False, cloud: bool = False):
 
 
 def _evaluate(cloud: bool, demo: bool, force_snapshot: bool,
-              mode: str = "intraday"):
+              mode: str = "intraday", dedup: bool = True):
     snap = _get_snapshot(force_snapshot, cloud)
     quotes = quoter.fetch_quotes(snap.index.tolist())
     if demo:
         quotes["price"] = quotes["preclose"] * 1.02
         quotes["chg_pct"] = 2.0
-    trig = scanner.evaluate(snap, quotes, mode="demo" if demo else mode)
-    return snap, trig
+    trig = scanner.evaluate(snap, quotes, mode="demo" if demo else mode, dedup=dedup)
+    return snap, trig, quotes
 
 
 # ---------------------------------------------------------------- 本地
@@ -156,7 +156,7 @@ def run_test():
 
 
 def run_demo(cloud: bool = False):
-    snap, trig = _evaluate(cloud=cloud, demo=True, force_snapshot=False)
+    snap, trig, _ = _evaluate(cloud=cloud, demo=True, force_snapshot=False, dedup=False)
     print(f"[demo] 模拟全市场+2%：触发 {len(trig)} 只")
     if len(trig):
         print(trig[MSG_FIELDS].head(20).round(3).to_string())
@@ -174,37 +174,109 @@ def run_is_trading_day() -> int:
     return 0 if mdate == today else 42
 
 
+def _record_dashboard_state(n_rows: int, trig, snap_size: int, mode: str,
+                            quotes=None) -> None:
+    """把本次扫描结果落到 store/state/，供看板消费。
+
+    产物：
+      latest_triggers.json  最近一次扫描的触发明细（含行业/斜率/量比等字段）
+      history.json          按次的触发数流水（看板画趋势用，滚动保留 400 条）
+      store/last_quotes.csv 全市场不复权最新价与昨收（账户估值用，随数据仓提交）
+    """
+    from .config import state_dir
+    d = state_dir()
+    day = date.today().isoformat()
+    ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+    # 全市场最新价（不复权）→ store/last_quotes.csv
+    if quotes is not None and len(quotes):
+        try:
+            q = quotes[["price", "preclose", "ts"]].copy()
+            q.index.name = "code"
+            q.to_csv(ROOT / "store" / "last_quotes.csv")
+            print(f"[state] 最新价落盘 {len(q)} 只 → store/last_quotes.csv")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[state] 最新价落盘失败: {exc}")
+
+    rows = []
+    if trig is not None and len(trig):
+        for code, r in trig[MSG_FIELDS].iterrows():
+            try:
+                rows.append({
+                    "code": code,
+                    "name": str(r["name"]),
+                    "price": round(float(r["price"]), 3),
+                    "preclose": round(float(r["preclose"]), 3),
+                    "chg_pct": round(float(r["chg_pct"]), 2),
+                    "dev_pct": round(float(r["dev_pct"]) * 100, 3),
+                    "slope": str(r["slope"]),
+                    "alignment": str(r["alignment"]),
+                    "a_events_1y": int(r["a_events_1y"]),
+                    "industry": str(r["industry"]),
+                    "mv_float_yi": round(float(r["mv_float_yi"]), 1),
+                    "amt_ratio": round(float(r["amt_ratio"]), 2),
+                })
+            except Exception as exc:  # noqa: BLE001
+                print(f"[state] {code} 记录失败: {exc}")
+
+    (d / "latest_triggers.json").write_text(
+        json.dumps({"day": day, "ts": ts, "mode": mode,
+                    "scanned": int(snap_size), "rows": rows},
+                   ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    hp = d / "history.json"
+    try:
+        hist = json.loads(hp.read_text(encoding="utf-8"))
+        if not isinstance(hist, list):
+            hist = []
+    except Exception:  # noqa: BLE001
+        hist = []
+    hist.append({"day": day, "ts": ts, "mode": mode,
+                 "n": n_rows, "scanned": int(snap_size)})
+    hp.write_text(json.dumps(hist[-400:], ensure_ascii=False, separators=(",", ":")),
+                  encoding="utf-8")
+    print(f"[state] 看板状态已记录：{n_rows} 只触发 / 快照 {snap_size} 只 → {d}")
+
+
 def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
-    """云端第一段：判定 + 出图，结果落 pending，不推送。"""
-    snap, trig = _evaluate(cloud=cloud, demo=demo, force_snapshot=False,
-                           mode="demo" if demo else mode)
+    """云端第一段：判定 + 出图，结果落 pending，不推送。
+
+    pending / 推送只含「新触发」（去重后）；看板状态记录当日全量触发。
+    """
+    snap, trig_all, quotes = _evaluate(cloud=cloud, demo=demo, force_snapshot=False,
+                                       mode="demo" if demo else mode, dedup=False)
+    trig = trig_all[trig_all["is_new"]] if len(trig_all) else trig_all
+    print(f"[prepare] 当日触发 {len(trig_all)} 只，其中新触发 {len(trig)} 只")
     day = date.today().isoformat()
     result = {"mode": "demo" if demo else mode,
               "day": day, "n": int(len(trig)), "charts": {}}
     if len(trig):
-        trig_out = trig[MSG_FIELDS].copy()
         OUT.mkdir(parents=True, exist_ok=True)
-        trig_out.to_csv(PENDING_CSV)
-        if _chart_enabled():
-            from .chart import render_weekly_chart
-            wmap = _store_weekly_map() if cloud else None
-            for code in trig_out.index:
-                weekly = wmap.get(code) if wmap else None
-                if weekly is None and not cloud:
-                    weekly = _local_weekly(code)
-                if weekly is None:
-                    continue
-                name = str(trig_out.at[code, "name"])
-                out = ROOT / "charts" / day / f"{code.split('.')[1]}.png"
-                try:
-                    render_weekly_chart(code, name, weekly, out)
-                    result["charts"][code] = out.relative_to(ROOT).as_posix()
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[chart] {code} 渲染失败: {exc}")
+        trig[MSG_FIELDS].copy().to_csv(PENDING_CSV)
+    # 图表：为当日全部触发（含已推过的）出图，供看板点击查看
+    if len(trig_all) and _chart_enabled():
+        from .chart import render_weekly_chart
+        wmap = _store_weekly_map() if cloud else None
+        for code in trig_all.index:
+            weekly = wmap.get(code) if wmap else None
+            if weekly is None and not cloud:
+                weekly = _local_weekly(code)
+            if weekly is None:
+                continue
+            name = str(trig_all.at[code, "name"])
+            out = ROOT / "charts" / day / f"{code.split('.')[1]}.png"
+            try:
+                render_weekly_chart(code, name, weekly, out)
+                result["charts"][code] = out.relative_to(ROOT).as_posix()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[chart] {code} 渲染失败: {exc}")
     PENDING.parent.mkdir(parents=True, exist_ok=True)
     PENDING.write_text(json.dumps(result, ensure_ascii=False, indent=1),
                        encoding="utf-8")
     print(f"[prepare] {result['n']} 只待推，图表 {len(result['charts'])} 张 → {PENDING}")
+    if not demo:
+        _record_dashboard_state(len(trig_all), trig_all if len(trig_all) else None,
+                                len(snap), "demo" if demo else mode, quotes)
 
 
 def run_notify(sha: str):

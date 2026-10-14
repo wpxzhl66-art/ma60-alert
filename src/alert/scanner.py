@@ -30,13 +30,17 @@ def _save_state(s: dict):
 
 
 def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
-             mode: str = "intraday") -> pd.DataFrame:
+             mode: str = "intraday", dedup: bool = True) -> pd.DataFrame:
     """返回当日触发 A 类上穿的股票表。
 
     判定（严格口径）：
       昨收(hfq) < MA60_prev  且  现价(hfq) >= MA60_prev
     现价 hfq 换算：factor = 快照末收盘 / 行情昨收（两者为同一交易日的
     后复权价与不复权价之比，即当日复权因子）；P_hfq = 现价 × factor。
+
+    dedup=True 时只返回「本日/本周尚未推送过」的新触发（推送口径）；
+    dedup=False 时返回全部触发，并在 is_new 列标注是否为新触发
+    （看板展示当日全量触发用）。
     """
     df = snapshot.join(quotes, how="inner")
     df = df[(df["preclose"] > 0) & (df["price"] > 0) & (df["ma60_prev"] > 0)].copy()
@@ -58,16 +62,17 @@ def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
     today = date.today().isoformat()
     cfg = load()["events"]
     this_week = f"{date.today().isocalendar().year}-W{date.today().isocalendar().week:02d}"
-    keep = []
+    is_new = []
     for code in df.index:
         rec = st.get(code, {})
-        if rec.get("last_push_date") == today:
-            continue
+        dup = rec.get("last_push_date") == today
         if cfg.get("dedup_weekly", True) and rec.get("last_push_week") == this_week:
-            continue
-        keep.append(code)
-    df = df.loc[keep]
+            dup = True
+        is_new.append(not dup)
+    df["is_new"] = is_new
     df["mode"] = mode
+    if dedup:
+        df = df[df["is_new"]].copy()
     return df
 
 

@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .workbuddy/
 nohup.out
+
+# WorkBuddy 本地应用描述符（发布用，不入库）
+.wbapp_*.genie

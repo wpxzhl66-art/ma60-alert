@@ -20,15 +20,17 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   alert:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       TZ: Asia/Shanghai
       ALERT_SENDKEY: ${{ secrets.ALERT_SENDKEY }}
       ALERT_CLOUD: "1"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PYTHONPATH: ${{ github.workspace }}/src
     steps:
       - uses: actions/checkout@v4
@@ -62,16 +64,23 @@ jobs:
           [ "${{ github.event.inputs.task }}" = "confirm" ] && MODE=confirm
           python -m alert.run_alert --prepare --cloud --mode "$MODE"
 
-      - name: 提交图表
+      - name: 构建看板数据
+        id: dash
+        if: steps.scan.conclusion == 'success'
+        run: |
+          cd src
+          python -m dashboard.build --daily
+
+      - name: 提交图表与看板数据
         id: commit
         if: steps.scan.conclusion == 'success'
         run: |
           cd "$GITHUB_WORKSPACE"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add charts/
-          git diff --cached --quiet || git commit -m "charts $(TZ=Asia/Shanghai date +%F-%H%M)"
-          git push
+          git add charts/ dashboard/
+          git diff --cached --quiet || git commit -m "charts+dashboard $(TZ=Asia/Shanghai date +%F-%H%M)"
+          bash .github/scripts/push.sh
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 推送（盘中模式无触发不推送）
@@ -88,7 +97,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add store/state/
           git diff --cached --quiet || git commit -m "state $(TZ=Asia/Shanghai date +%F-%H%M)"
-          git push
+          bash .github/scripts/push.sh
 
       # ---------------- 每日数据更新 ----------------
       - name: 更新数据仓
@@ -96,16 +105,25 @@ jobs:
         run: |
           cd src
           python -m alert.run_alert --update-cloud
+          python -m dashboard.build --names --weekly
 
-      - name: 提交数据仓
+      - name: 清理过期图表（只保留最近 14 个交易日）
+        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
+        run: |
+          cd charts 2>/dev/null || exit 0
+          ls -1d */ 2>/dev/null | sort | head -n -14 | while read d; do
+            echo "清理 $d"; rm -rf "$d"
+          done
+
+      - name: 提交数据仓与看板
         if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
         run: |
           cd "$GITHUB_WORKSPACE"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add store/
-          git diff --cached --quiet || git commit -m "store $(TZ=Asia/Shanghai date +%F)"
-          git push
+          git add store/ dashboard/ charts/
+          git diff --cached --quiet || git commit -m "store+dashboard $(TZ=Asia/Shanghai date +%F)"
+          bash .github/scripts/push.sh
 
       # ---------------- 手动演示（不推送） ----------------
       - name: 演示运行
