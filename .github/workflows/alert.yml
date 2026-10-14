@@ -28,6 +28,7 @@ jobs:
     env:
       TZ: Asia/Shanghai
       ALERT_SENDKEY: ${{ secrets.ALERT_SENDKEY }}
+      ALERT_CLOUD: "1"
       PYTHONPATH: ${{ github.workspace }}/src
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +58,7 @@ jobs:
            github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
         run: |
           cd src
-          MODE=scan
+          MODE=intraday
           [ "${{ github.event.inputs.task }}" = "confirm" ] && MODE=confirm
           python -m alert.run_alert --prepare --cloud --mode "$MODE"
 
@@ -78,6 +79,16 @@ jobs:
         run: |
           cd src
           python -m alert.run_alert --notify --sha "${{ steps.commit.outputs.sha }}"
+
+      - name: 提交推送状态
+        if: steps.scan.conclusion == 'success'
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add store/state/
+          git diff --cached --quiet || git commit -m "state $(TZ=Asia/Shanghai date +%F-%H%M)"
+          git push
 
       # ---------------- 每日数据更新 ----------------
       - name: 更新数据仓

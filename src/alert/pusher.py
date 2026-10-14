@@ -7,25 +7,28 @@ from pathlib import Path
 
 import requests
 
-from .config import load
+from .config import load, state_dir
 
 OUT = Path(__file__).resolve().parents[2] / "output" / "alert"
-_STATE = OUT / "push_state.json"
 API = "https://sctapi.ftqq.com/{key}.send"
 
 
+def _state_path() -> Path:
+    return state_dir() / "push_state.json"
+
+
 def _today_count() -> int:
-    if _STATE.exists():
-        s = json.loads(_STATE.read_text(encoding="utf-8"))
+    p = _state_path()
+    if p.exists():
+        s = json.loads(p.read_text(encoding="utf-8"))
         if s.get("date") == date.today().isoformat():
             return int(s.get("count", 0))
     return 0
 
 
 def _bump(n: int = 1):
-    OUT.mkdir(parents=True, exist_ok=True)
     s = {"date": date.today().isoformat(), "count": _today_count() + n}
-    _STATE.write_text(json.dumps(s, ensure_ascii=False), encoding="utf-8")
+    _state_path().write_text(json.dumps(s, ensure_ascii=False), encoding="utf-8")
 
 
 def remaining_quota() -> int:
@@ -33,14 +36,24 @@ def remaining_quota() -> int:
     return max(0, int(cfg.get("daily_limit", 5)) - _today_count())
 
 
-def send(title: str, desp: str) -> bool:
-    """推送一条消息。额度不足返回 False；网络失败重试 3 次。"""
+def send(title: str, desp: str, dry_run: bool | None = None) -> bool:
+    """推送一条消息。额度不足返回 False；网络失败重试 3 次。
+
+    dry_run=True（或环境变量 ALERT_DRYRUN=1）时只打印不发送，用于链路验证。
+    """
     import os
     cfg = load()["serverchan"]
+    if dry_run is None:
+        dry_run = os.environ.get("ALERT_DRYRUN") == "1"
     key = os.environ.get("ALERT_SENDKEY") or cfg["sendkey"]   # 云端用 Secrets
     if remaining_quota() <= 0:
         print(f"[pusher] 今日额度已用尽（{cfg.get('daily_limit')}条），跳过：{title}")
         return False
+    if dry_run:
+        print(f"[pusher][dry-run] 跳过实际发送：{title}")
+        print(desp[:500])
+        _bump()
+        return True
     for attempt in range(3):
         try:
             r = requests.post(API.format(key=key),

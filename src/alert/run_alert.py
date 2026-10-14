@@ -73,13 +73,14 @@ def _get_snapshot(force: bool = False, cloud: bool = False):
     return snap
 
 
-def _evaluate(cloud: bool, demo: bool, force_snapshot: bool):
+def _evaluate(cloud: bool, demo: bool, force_snapshot: bool,
+              mode: str = "intraday"):
     snap = _get_snapshot(force_snapshot, cloud)
     quotes = quoter.fetch_quotes(snap.index.tolist())
     if demo:
         quotes["price"] = quotes["preclose"] * 1.02
         quotes["chg_pct"] = 2.0
-    trig = scanner.evaluate(snap, quotes, mode="demo" if demo else "scan")
+    trig = scanner.evaluate(snap, quotes, mode="demo" if demo else mode)
     return snap, trig
 
 
@@ -173,9 +174,10 @@ def run_is_trading_day() -> int:
     return 0 if mdate == today else 42
 
 
-def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "scan"):
+def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
     """云端第一段：判定 + 出图，结果落 pending，不推送。"""
-    snap, trig = _evaluate(cloud=cloud, demo=demo, force_snapshot=False)
+    snap, trig = _evaluate(cloud=cloud, demo=demo, force_snapshot=False,
+                           mode="demo" if demo else mode)
     day = date.today().isoformat()
     result = {"mode": "demo" if demo else mode,
               "day": day, "n": int(len(trig)), "charts": {}}
@@ -246,7 +248,7 @@ def main():
     ap.add_argument("--notify", action="store_true")
     ap.add_argument("--update-cloud", action="store_true")
     ap.add_argument("--cloud", action="store_true", help="用 store 精简仓做快照")
-    ap.add_argument("--mode", default="scan", choices=["scan", "confirm"])
+    ap.add_argument("--mode", default="intraday", choices=["intraday", "confirm"])
     ap.add_argument("--sha", default="main")
     ap.add_argument("--force-snapshot", action="store_true")
     a = ap.parse_args()

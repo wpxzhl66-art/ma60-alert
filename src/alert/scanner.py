@@ -8,21 +8,25 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .config import load
+from .config import load, state_dir
 
 OUT = Path(__file__).resolve().parents[2] / "output" / "alert"
-STATE = OUT / "alert_state.json"
+
+
+def _state_path() -> Path:
+    return state_dir() / "alert_state.json"
 
 
 def _load_state() -> dict:
-    if STATE.exists():
-        return json.loads(STATE.read_text(encoding="utf-8"))
+    p = _state_path()
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
     return {}
 
 
 def _save_state(s: dict):
-    OUT.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
+    _state_path().write_text(json.dumps(s, ensure_ascii=False, indent=1),
+                             encoding="utf-8")
 
 
 def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
