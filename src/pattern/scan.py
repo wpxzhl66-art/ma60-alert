@@ -1,15 +1,15 @@
-"""右侧反转五阶段形态 · 全市场实盘扫描。
+"""右侧反转五阶段形态 · 全市场扫描（本机数据源）。
 
-数据链路（决定了本模块只能在本机跑）：
-    data/daily/*.csv.gz   后复权日线（5290 只，385MB，**不入库** → 云端没有）
-  + 腾讯实时行情            当日收盘/成交额，用于合成最后一根 K 线
+数据链路：
+    data/daily/*.csv.gz   后复权日线（5290 只，385MB，**不入库**）
+  + 腾讯实时行情            当日收盘/成交额，用于补最后一根 K 线
 
-云端（GitHub Actions）拿不到日线仓，因此形态扫描由**本机定时任务**执行，
-结果写 store/state/pattern_triggers.json（推送）与 dashboard/pattern.json（看板），
-随代码提交推上仓库，云端收盘确认时把形态段落追加到同一条推送里。
+云端（GitHub Actions）拿不到 data/daily，改用 ``store/daily`` 分片仓，
+入口是 ``pattern.store_scan``；两者判定共用 ``pattern.core.analyze()``，
+实测逐只结果完全一致（2026-10-15，5223 只）。
 
 用法（在 src 目录下）：
-    python -m pattern.scan              # 扫描 + 写 output/pattern/scan.json
+    python -m pattern.scan              # 扫描 + 写 output/pattern/*.json
     python -m pattern.scan --quiet      # 只写文件，不打印明细
 """
 from __future__ import annotations
@@ -51,13 +51,30 @@ def fetch_snapshot(codes: list[str]) -> pd.DataFrame:
     """当日快照：优先用刚抓的实时行情（含成交额/换手/市值，形态判定需要）。
 
     非交易时段腾讯返回最近一个交易日的收盘数据，同样可用。
+
+    ⚠️ 必须用**每只股票自己的行情时间戳**滤掉停牌/退市股。这些标的的 ts 冻结在
+    停牌前那天，而价格与成交额都 > 0 —— 仅靠 price/amount 过滤不掉，会把
+    **历史形态当成今天的**报出来（实测：数码视讯、长亮科技被误报为 B 类）。
     """
     from alert.quoter import fetch_quotes
     q = fetch_quotes(codes)
     if q.empty:
         return q
     q = q[(q.price > 0) & (q.amount_wan > 0)]          # 剔停牌（成交量 0）
-    return q
+    if q.empty:
+        return q
+    day = q["ts"].astype(str).str[:8]
+    ok = day.str.len() >= 8
+    q, day = q[ok], day[ok]
+    if q.empty:
+        return q
+    return q[day == day.max()]                          # 只留与全市场最新行情日同日者
+
+
+def market_snapshot_date(q: pd.DataFrame) -> str:
+    """从已过滤快照取统一行情日（YYYY-MM-DD）。"""
+    ts = str(q["ts"].astype(str).str[:8].max())
+    return f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
 
 
 def load_prev_snapshot() -> tuple[str, dict]:
@@ -111,25 +128,31 @@ def _one(job: tuple) -> dict | None:
             return None
     except Exception:                                       # noqa: BLE001
         return None
-    df = df[df["date"] < pd.Timestamp(snap_date)]
+    d0 = pd.Timestamp(snap_date)
+    # 日线仓若已含当日（收盘后先跑了日线更新）→ 直接用真实后复权值。
+    # ⚠️ 合成只是近似：腾讯行情的涨跌幅**只有 1 位小数**（如 -0.1 vs 真实 -0.0951%），
+    #    0.005% 的偏差足以让「创 60 日新高」「企稳 0.995」这类边界判定翻转几只。
+    has_today = bool((df["date"] == d0).any())
+    df = df[df["date"] <= d0] if has_today else df[df["date"] < d0]
     if len(df) < pc.DD_PRIOR + pc.DD_RECENT:
         return None
     c_last = float(df["close"].iloc[-1])
     rows = []
-    # 缺口 1：日线仓末日与上一交易日快照之间的空档（价格可补，成交额缺 → 置 NaN）
-    if prev is not None:
-        prev_day, pprice, ppre = prev
-        if pd.Timestamp(prev_day) > df["date"].iloc[-1] and ppre > 0:
-            rows.append({"date": pd.Timestamp(prev_day),
-                         "close": c_last * (pprice / ppre), "amount": np.nan})
-    # 缺口 2：当日（实时快照）——后复权序列按涨跌幅外推，成交额用实时值（元）
-    chg = float(snap["chg_pct"])
-    c_syn = (rows[-1]["close"] if rows else c_last) * (1 + chg / 100.0)
-    if c_syn < pmin:
-        return None
-    rows.append({"date": pd.Timestamp(snap_date), "close": c_syn,
-                 "amount": float(snap["amount_wan"]) * 1e4})
-    df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+    if not has_today:
+        # 缺口 1：日线仓末日与上一交易日快照之间的空档（价格可补，成交额缺 → 置 NaN）
+        if prev is not None:
+            prev_day, pprice, ppre = prev
+            if pd.Timestamp(prev_day) > df["date"].iloc[-1] and ppre > 0:
+                rows.append({"date": pd.Timestamp(prev_day),
+                             "close": c_last * (pprice / ppre), "amount": np.nan})
+        # 缺口 2：当日（实时快照）——后复权序列按涨跌幅外推，成交额用实时值（元）
+        chg = float(snap["chg_pct"])
+        c_syn = (rows[-1]["close"] if rows else c_last) * (1 + chg / 100.0)
+        if c_syn < pmin:
+            return None
+        rows.append({"date": d0, "close": c_syn,
+                     "amount": float(snap["amount_wan"]) * 1e4})
+        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
 
     res = pc.analyze(df, code=code)
     last = res["n"] - 1
@@ -152,8 +175,7 @@ def scan(quiet: bool = False, workers: int = 8) -> dict:
     q = fetch_snapshot(sorted(codes_all))
     if q.empty:
         raise SystemExit("[pattern] 实时行情为空，无法扫描")
-    snap_date = str(q.iloc[0]["ts"])[:8]
-    snap_date = f"{snap_date[:4]}-{snap_date[4:6]}-{snap_date[6:8]}"
+    snap_date = market_snapshot_date(q)
     codes = [c for c in q.index if c in codes_all]
 
     # 数据新鲜度体检：日线仓必须跟得上，否则中间缺 K 线、形态判定失真

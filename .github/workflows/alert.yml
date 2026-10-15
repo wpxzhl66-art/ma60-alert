@@ -71,9 +71,27 @@ jobs:
            github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
         run: |
           cd src
-          MODE=intraday
-          [ "${{ github.event.inputs.task }}" = "confirm" ] && MODE=confirm
+          # 模式按**闸门给出的实际执行时机**定：cron 实测会延迟 8~9 小时，
+          # 14:05 的触发晚上才送到时再标「盘中」就是错的（补扫一律按收盘确认处理）。
+          MODE="${{ steps.gate.outputs.mode }}"
+          if [ -z "$MODE" ]; then
+            MODE=intraday
+            [ "${{ github.event.inputs.task }}" = "confirm" ] && MODE=confirm
+          fi
+          echo "扫描模式：$MODE"
           python -m alert.run_alert --prepare --cloud --mode "$MODE"
+
+      - name: 形态扫描（云端版 · 读 store/daily 分片）
+        id: pattern
+        # 只在收盘确认轮跑：形态本就是收盘后的判断，盘中跑既无意义又白占时间。
+        # 失败不阻断主链路（A 股预警优先级更高）——continue-on-error 兜住。
+        continue-on-error: true
+        if: >-
+          steps.scan.conclusion == 'success' &&
+          (github.event.inputs.task == 'confirm' || steps.gate.outputs.slot == '15:15')
+        run: |
+          cd src
+          python -m pattern.store_scan --quiet
 
       - name: 构建看板数据
         id: dash

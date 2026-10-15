@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.8.0';
+  const APP_VERSION = 'v1.9.0';
 
   const S = {
     data: null,        // data.json
@@ -170,7 +170,7 @@
       ' · 定时可能有数分钟延迟，节假日自动跳过</div></div>';
   }
 
-  /** 首页「形态」入口卡：只有本机扫过才有数据，缺失时整卡隐藏 */
+  /** 首页「形态」入口卡：本机或云端扫过才有数据，缺失时整卡隐藏 */
   function fillPatCard() {
     const p = S.pat, box = $('patBox'), card = $('patCard');
     if (!box || !card) return;
@@ -537,12 +537,13 @@
 
   /* ------------------------------------------------ 视图：形态
      右侧反转五阶段（用户 2026-10-15 提供的选股思路）。
-     数据由**本机**在收盘后扫描写入 dashboard/pattern.json —— 云端没有日线仓、
-     跑不出这个文件，因此是「本机扫描 → 提交仓库 → 看板与推送消费」的单向链路。
+     数据由扫描写入 dashboard/pattern.json：本机（data/daily 全历史）与
+     云端（store/daily 400 日分片）都能产出，判定共用 src/pattern/core.py，
+     结果逐只一致。两者都离线时文件日期会变旧，页面据此提示「非当日」。
      ⚠️ 定位（14 年全历史回测）：阶段④「启动日」介入后 60 日跑输全市场等权
         8.41%（胜率 31.7%，16 个年份无一为正）；阶段③ −4.65%、阶段② −6.22%。
         → 这是**追涨风险提示**，不是买入信号。改文案前先读
-        output/_signal/pattern_backtest.json。 */
+        store/pattern_backtest.json（入库版，云端也读得到）。 */
   function loadPattern() {
     if (S.pat) return Promise.resolve(S.pat);
     if (S.patLoading) return S.patLoading;
@@ -604,7 +605,7 @@
       d = await loadPattern();
     } catch (e) {
       hero.innerHTML = '<div class="banner err">形态数据加载失败：' + esc(e.message) +
-        '<br><br>该文件由本机收盘后扫描生成并提交，云端不产出。</div>';
+        '<br><br>该文件由扫描生成（本机或云端均可产出），请检查是否已生成并提交。</div>';
       ['A', 'B', 'C'].forEach((k) => { $('pat' + k + 'List').innerHTML = ''; });
       return;
     }
@@ -634,7 +635,7 @@
             (e4.ex60_win || 31.7).toFixed(1) + '%</div></div>' +
       '</div>' +
       (stale ? '<div class="banner">形态扫描数据停在 ' + esc(d.day) +
-        '（本机未在今日收盘后执行扫描），下方名单不是今日结果。</div>' : '');
+        '（今日尚未扫描），下方名单不是今日结果。</div>' : '');
 
     mountSort('pat', 'patCSort', PAT_SORTS, () => renderPatList('C'));
     ['A', 'B', 'C'].forEach(renderPatList);
@@ -647,8 +648,9 @@
       '② 突破＝创 60 日新高（突破本轮反弹前高，而非年线高点）；' +
       '③ 洗盘＝回踩 4%~20%、不少于 3 日、近 3 日不再破前一日 0.5%；' +
       '④ 启动＝涨停，或涨幅 ≥5% 且量比 ≥1.8，且收盘创回踩段新高。' +
-      '<br><b>数据链路</b>：本机日线仓 + 当日收盘快照合成，收盘后由本机扫描并提交仓库' +
-      '（云端没有日线仓，故形态不在云端跑）。' +
+      '<br><b>数据链路</b>：本机（全历史日线）与云端（最近 400 交易日分片仓）' +
+      '都会在收盘后扫描并提交仓库，判定逻辑同一份、结果一致；' +
+      '本机离线时由云端兜底。' +
       (d.lag ? ' <b>数据提示</b>：' + esc(d.lag) : '') +
       '<br><b>⚠️ 信号性质（14 年全历史回测）</b>：' +
       '阶段④启动 ' + (e4.n || 0).toLocaleString() + ' 次 → 60 日超额中位 ' +
@@ -911,7 +913,7 @@
         window.scrollTo({ top: 0 });
         if (b.dataset.tab === 'system' && trendChart) setTimeout(() => trendChart.resize(), 50);
         if (b.dataset.tab === 'futures') renderFutures();   // 懒加载：切到本页才拉 fut.json
-        if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机生成
+        if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机/云端扫描生成
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
       });
     });

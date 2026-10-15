@@ -22,6 +22,7 @@ from pathlib import Path
 CN = timezone(timedelta(hours=8))
 SLOTS = ("10:05", "11:05", "14:05", "14:55", "15:15")   # 北京时间
 WINDOW_MIN = 30       # 槽位到点后 30 分钟内到达都算命中，用于吸收 schedule 延迟
+CLOSE_MIN = 15 * 60   # 收盘线（15:00）：此后执行的扫描一律按「收盘确认」处理
 KEEP_DAYS = 45        # 标记文件保留天数
 MARKS = Path(__file__).resolve().parents[2] / "store" / "state" / "slot_marks.json"
 
@@ -79,8 +80,16 @@ def mark(slot: str) -> None:
     print(f"[gate] 已标记槽位 {slot} @ {now:%Y-%m-%d %H:%M}", file=sys.stderr)
 
 
-def _decide_slot() -> tuple[str, int]:
-    """返回 (命中的槽位, 相对槽位的延迟分钟)；未命中返回 ("", 0)。"""
+def _decide_slot() -> tuple[str, int, bool]:
+    """返回 ``(命中的槽位, 相对槽位的延迟分钟, 是否为迟补)``；未命中返回 ``("", 0, False)``。
+
+    两级判定：
+      1) 正常路径 —— 落在某槽位的 30 分钟窗口内；
+      2) **兜底补扫** —— 当天一次都没跑成时，任何到得更晚的触发都补扫一次。
+         这只是补漏：GitHub schedule 实测延迟 8~9 小时（10-15 全天 24 个网格点
+         0 个准点到达），30 分钟窗口根本吸收不了；与其整天漏掉，不如晚扫。
+         补扫同样会打标，一天最多补一次。
+    """
     now = _now()
     today = now.strftime("%Y-%m-%d")
     now_m = now.hour * 60 + now.minute
@@ -90,19 +99,32 @@ def _decide_slot() -> tuple[str, int]:
             continue
         delta = now_m - _minutes(s)
         if 0 <= delta <= WINDOW_MIN:
-            return s, delta
-    return "", 0
+            return s, delta, False
+    if not done and now_m >= _minutes(SLOTS[0]):
+        late = max((s for s in SLOTS if _minutes(s) <= now_m),
+                   key=_minutes, default=SLOTS[-1])
+        return late, now_m - _minutes(late), True
+    return "", 0, False
 
 
 def decide() -> None:
     now = _now()
-    slot, delay = _decide_slot()
+    now_m = now.hour * 60 + now.minute
+    slot, delay, late = _decide_slot()
+    # 模式按**实际执行时间**定，而不是按槽位名 —— 延迟到收盘后执行就该算收盘确认，
+    # 否则晚上补扫出来的数据会被标成「盘中」，语义是错的。
+    mode = "confirm" if now_m >= CLOSE_MIN else "intraday"
     out_path = os.environ.get("GITHUB_OUTPUT")
     if out_path and out_path != os.devnull:
         with open(out_path, "a", encoding="utf-8") as fh:
             fh.write(f"run={'true' if slot else 'false'}\n")
             fh.write(f"slot={slot}\n")
-    tail = f"命中槽位 {slot}（延迟 {delay} 分钟）" if slot else "未命中，跳过本轮"
+            fh.write(f"mode={mode}\n")
+    if slot:
+        tail = (f"命中槽位 {slot}（延迟 {delay} 分钟"
+                + ("，迟补" if late else "") + f"）→ 模式 {mode}")
+    else:
+        tail = "未命中，跳过本轮"
     print(f"[gate] 北京 {now:%H:%M} → {tail}", file=sys.stderr)
 
 

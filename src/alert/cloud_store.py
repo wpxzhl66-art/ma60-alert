@@ -37,6 +37,13 @@ F_WEEKLY = STORE / "weekly_closes.csv.gz"
 F_LAST = STORE / "last_close.csv"
 F_AMT = STORE / "avg_amt20.csv"
 F_UNIV = STORE / "universe_live.csv.gz"
+# 日线滚动仓（v1.9.0）：形态板块（src/pattern）要在云端判定，而形态需要
+# 310~355 个交易日的日线序列（250 日高点 + 60 日 + 最长 45 日回踩）。
+# ⚠️ 为什么不放**单个**滚动文件：32MB 的单文件每天重写会让 gzip 字节全变，
+#    git 无法 delta，仓库每天涨 32MB（一年 11GB）。改成**按交易日分片**后，
+#    每天只新增 1 个小分片（约 50KB）、历史分片永不变更 → 逐日增量仅几十 KB。
+F_DAILY_DIR = STORE / "daily"
+KEEP_DAILY = 400          # 保留最近 N 个交易日分片（判定需 310~355，留余量）
 
 KEEP_WEEKS = 130          # 仓内保留周数（判定需 61+13，留足余量）
 FETCH_BUFFER_DAYS = 50    # 增量抓取回看天数（覆盖 20 日均额）
@@ -96,6 +103,147 @@ def live_universe() -> pd.DataFrame:
     if F_UNIV.exists():
         return pd.read_csv(F_UNIV, dtype=str)
     return pd.DataFrame(columns=["code", "code_name", "ipoDate"])
+
+
+# ---------------------------------------------------------------- 日线滚动仓（分片）
+def daily_shards(keep: int = KEEP_DAILY) -> list[Path]:
+    """按日期升序返回最近 keep 个交易日分片。"""
+    if not F_DAILY_DIR.exists():
+        return []
+    return sorted(F_DAILY_DIR.glob("*.csv.gz"))[-keep:]
+
+
+def load_daily_recent(keep: int = KEEP_DAILY) -> pd.DataFrame:
+    """拼接最近 keep 个交易日的日线，列为 code/date/close/amount。
+
+    缺失或损坏的分片跳过（不抛错）——宁可少一天，也不让整条链路挂掉。
+    """
+    empty = pd.DataFrame(columns=["code", "date", "close", "amount"])
+    parts = []
+    for f in daily_shards(keep):
+        try:
+            parts.append(pd.read_csv(f))
+        except Exception:  # noqa: BLE001
+            continue
+    if not parts:
+        return empty
+    df = pd.concat(parts, ignore_index=True)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def _write_shard(d: pd.Timestamp, rows: pd.DataFrame) -> None:
+    """写单个交易日分片。
+
+    已存在则按 code 合并（新值覆盖旧值）——补跑时不会丢已抓到的标的；
+    按 code 排序后再落盘，保证同一份数据产生**稳定的字节**（git diff 干净）。
+    """
+    F_DAILY_DIR.mkdir(parents=True, exist_ok=True)
+    p = F_DAILY_DIR / f"{d:%Y-%m-%d}.csv.gz"
+    if p.exists():
+        try:
+            rows = pd.concat([pd.read_csv(p), rows], ignore_index=True)
+        except Exception:  # noqa: BLE001
+            pass
+    out = (rows.drop_duplicates("code", keep="last")
+               .sort_values("code")[["code", "date", "close", "amount"]])
+    out.to_csv(p, index=False, compression="gzip")
+
+
+def append_daily_shards(fetched: dict, keep: int = KEEP_DAILY) -> int:
+    """把本轮抓到的日线按交易日写入分片，并清理窗口外的旧分片。
+
+    fetched = ``{code: DataFrame[date, close, amount]}`` —— 直接复用
+    ``update_from_baostock`` 已经抓下来的数据，**零额外请求**。
+    返回写入的分片数。
+    """
+    rows = []
+    for c, df in (fetched or {}).items():
+        if df is None or len(df) == 0:
+            continue
+        t = df[["date", "close", "amount"]].copy()
+        t["code"] = c
+        rows.append(t)
+    if not rows:
+        return 0
+    allrows = pd.concat(rows, ignore_index=True)
+    allrows["close"] = pd.to_numeric(allrows["close"], errors="coerce").round(4)
+    allrows["amount"] = pd.to_numeric(allrows["amount"], errors="coerce").round(0)
+    n = 0
+    for d, g in allrows.groupby("date"):
+        _write_shard(pd.Timestamp(d), g)
+        n += 1
+    # 滚动清理：只留最近 keep 个分片（git 对象仍在库内，但引用消失后
+    # 后续 clone 不再拉取，仓库体积不会线性膨胀）
+    stale = sorted(F_DAILY_DIR.glob("*.csv.gz"))[:-keep]
+    for f in stale:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+    return n
+
+
+def seed_daily_shards_from_local() -> int:
+    """用本地 data/daily 播种云端日线分片仓（一次性操作）。
+
+    只保留 date/close/amount 三列与最近 KEEP_DAILY 个交易日。
+    部分精简源缺 amount → 自适应补 NaN（形态的量比会因此失效，仅影响该标的）。
+    """
+    import glob
+
+    files = sorted(glob.glob(str(ROOT / "data" / "daily" / "*.csv.gz")))
+    if not files:
+        raise SystemExit("本地没有 data/daily，无法播种日线分片仓")
+
+    uni = None
+    up = ROOT / "data" / "universe.csv.gz"
+    if up.exists():
+        uni = pd.read_csv(up, dtype=str).set_index("code")
+
+    parts, skipped = [], 0
+    for i, f in enumerate(files, 1):
+        code = Path(f).name.replace(".csv.gz", "").replace("_", ".", 1)
+        if uni is not None and code in uni.index and str(uni.at[code, "status"]) != "1":
+            continue
+        try:
+            df = pd.read_csv(f, parse_dates=["date"], usecols=["date", "close", "amount"])
+        except ValueError:                     # 精简源没有 amount
+            try:
+                df = pd.read_csv(f, parse_dates=["date"], usecols=["date", "close"])
+                df["amount"] = np.nan
+            except Exception:                  # noqa: BLE001
+                skipped += 1
+                continue
+        except Exception:                      # noqa: BLE001
+            skipped += 1
+            continue
+        df["code"] = code
+        parts.append(df[["code", "date", "close", "amount"]])
+        if i % 1500 == 0:
+            print(f"  读入 {i}/{len(files)}", flush=True)
+
+    if not parts:
+        raise SystemExit("本地日线全部读取失败")
+
+    allrows = pd.concat(parts, ignore_index=True)
+    days = np.sort(allrows["date"].unique())[-KEEP_DAILY:]
+    allrows = allrows[allrows["date"] >= days[0]].copy()
+    allrows["close"] = pd.to_numeric(allrows["close"], errors="coerce").round(4)
+    allrows["amount"] = pd.to_numeric(allrows["amount"], errors="coerce").round(0)
+
+    F_DAILY_DIR.mkdir(parents=True, exist_ok=True)
+    for f in F_DAILY_DIR.glob("*.csv.gz"):      # 清掉旧分片，避免残留混入
+        f.unlink()
+    n = 0
+    for d, g in allrows.groupby("date"):
+        _write_shard(pd.Timestamp(d), g)
+        n += 1
+    size = sum(f.stat().st_size for f in F_DAILY_DIR.glob("*.csv.gz"))
+    print(f"[store] 日线分片仓播种完成：{n} 个交易日 / {allrows['code'].nunique()} 只 / "
+          f"{len(allrows):,} 行 / {size/1e6:.1f} MB"
+          + (f"（跳过 {skipped} 只无数据）" if skipped else ""))
+    return n
 
 
 # ---------------------------------------------------------------- 播种（本地）
@@ -544,6 +692,13 @@ def update_from_baostock(workers: int = 16, budget_sec: int = 6600,
     pd.concat([keep_last, pd.DataFrame(last_rows)], ignore_index=True).to_csv(F_LAST, index=False)
     keep_amt = amt_old[~amt_old.index.isin(upd)].rename("avg_amt20").reset_index()
     pd.concat([keep_amt, pd.DataFrame(amt_rows)], ignore_index=True).to_csv(F_AMT, index=False)
+
+    # --- 日线分片仓：形态板块（src/pattern）云端判定所需 ---
+    # 复用 fetched（本就是 date/close/amount 三列），不产生任何额外请求。
+    # 腾讯兜底标的（tx_got）没有 hfq 日线 → 这些分片里缺它们，属已知降级。
+    n_shard = append_daily_shards(fetched)
+    if n_shard:
+        print(f"[store] 日线分片仓写入 {n_shard} 个交易日（形态板块云端判定用）")
 
     coverage = len(keep_weekly) + len(new_weekly)
     unresolved = [c for c in codes if c not in upd]

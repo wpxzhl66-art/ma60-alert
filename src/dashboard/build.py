@@ -410,26 +410,29 @@ def build_futures() -> dict:
 def build_pattern() -> dict:
     """生成 dashboard/pattern.json：右侧反转形态扫描结果 + 回测结论。
 
-    数据源为本机扫描产物 output/pattern/latest.json（形态判定依赖日线仓，
-    云端没有 → 云端跑不出这个文件，因此**绝不能让它覆盖既有结果**）。
-    回测结论从 output/_signal/pattern_backtest.json 提取后内嵌，
-    使推送文案与看板引用的数字都来自产物而非硬编码。
+    数据源为扫描产物 output/pattern/latest.json —— 本机 pattern.scan 与云端
+    pattern.store_scan 都写这个路径（判定共用 pattern.core，结果一致）。
+    回测结论优先读**入库的** store/pattern_backtest.json（output/ 已 gitignore，
+    云端读不到），使推送文案与看板引用的数字都有产物来源而非硬编码。
 
     两道防回退保护（2026-10-15 推送覆盖云端数据的教训）：
-      1. 本机产物缺失 → 原样保留既有 pattern.json，不写空文件；
-      2. 本机产物日期早于线上 → 不覆盖。
+      1. 扫描产物缺失 → 原样保留既有 pattern.json，不写空文件；
+      2. 扫描产物日期早于线上 → 不覆盖。
     """
     src = ROOT / "output" / "pattern" / "latest.json"
     obj = _read_json(src, {}) or {}
     old = _read_json(OUT / "pattern.json", {}) or {}
     if not obj.get("day"):
-        print("[pattern] 本机扫描产物缺失（云端无日线仓属正常），保留既有 pattern.json")
+        print("[pattern] 扫描产物缺失（首跑或离线），保留既有 pattern.json")
         return old
     if old.get("day") and str(obj["day"]) < str(old["day"]):
         print(f"[pattern] 本机产物 {obj['day']} 早于线上 {old['day']}，不覆盖")
         return old
 
-    bt = _read_json(ROOT / "output" / "_signal" / "pattern_backtest.json", {}) or {}
+    # 回测结论：output/ 已 gitignore → 云端读不到，因此以**入库的 store 副本**为准，
+    # 本机 output/ 产物作回退（这样推送与看板引用的数字在云端也有来源，不靠硬编码）
+    bt = (_read_json(ROOT / "store" / "pattern_backtest.json", {})
+          or _read_json(ROOT / "output" / "_signal" / "pattern_backtest.json", {}) or {})
     summary: dict = {}
     for k in ("e4", "e3", "e2"):
         st = (bt.get("stages") or {}).get(k) or {}
