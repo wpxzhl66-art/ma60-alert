@@ -2,6 +2,7 @@
 
 产物（均落在 <ROOT>/dashboard/）：
   data.json     每日动态：今日触发、运行流水、历史趋势、数据健康度（小、每次扫描都刷）
+  history.json  近一月「上穿 60 周线」事件流水（明细见 dashboard/history.py）
   quotes.json   全市场最新价（不复权），账户估值的兜底价格源
   static.json   名称 + 申万行业（内容变了才提交，几乎不变）
 
@@ -11,8 +12,8 @@
 用法：
   python -m dashboard.build --all       # 全量构建
   python -m dashboard.build --names     # 仅刷新 store/stock_names.csv
-  python -m dashboard.build --daily     # 日常：quotes + data
-  python -m dashboard.build --weekly    # 周更：static + data
+  python -m dashboard.build --daily     # 日常：quotes + history + data
+  python -m dashboard.build --weekly    # 周更：static + history + data
 """
 from __future__ import annotations
 
@@ -433,6 +434,10 @@ def build_data(static_obj: dict | None = None) -> dict:
         "mode": rec.get("mode", ""), "ts": rec.get("ts", ""), "peak": peak.get(d, rec.get("n", 0)),
     } for d, rec in sorted(by_day.items())[-30:]]
 
+    # 历史触发摘要（明细在 history.json，这里只带几个数字供首页入口卡用）
+    hj = _read_json(OUT / "history.json", {}) or {}
+    hs = hj.get("summary") or {}
+
     obj = {
         "generated_at": _now().isoformat(timespec="seconds"),
         "today": date.today().isoformat(),
@@ -450,6 +455,11 @@ def build_data(static_obj: dict | None = None) -> dict:
         "push": {"date": push.get("date", ""), "count": int(push.get("count", 0)), "limit": 5},
         "trend": trend,
         "health": health,
+        "hist": {
+            "start": hj.get("start", ""), "end": hj.get("end", ""),
+            "events": int(hs.get("events", 0)), "stocks": int(hs.get("stocks", 0)),
+            "above_now": int(hs.get("above_now", 0)),
+        },
         "repo": REPO,
     }
     _write_if_changed(OUT / "data.json", _dump(obj), "data")
@@ -460,8 +470,8 @@ def build_data(static_obj: dict | None = None) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description="看板数据构建")
     ap.add_argument("--all", action="store_true", help="全量（names+static+quotes+data）")
-    ap.add_argument("--daily", action="store_true", help="日常：quotes + data")
-    ap.add_argument("--weekly", action="store_true", help="周更：static + data")
+    ap.add_argument("--daily", action="store_true", help="日常：quotes + history + data")
+    ap.add_argument("--weekly", action="store_true", help="周更：static + history + data")
     ap.add_argument("--names", action="store_true", help="刷新 stock_names.csv")
     ap.add_argument("--static", action="store_true")
     ap.add_argument("--quotes", action="store_true")
@@ -479,7 +489,11 @@ def main() -> None:
         static_obj = build_static()
     if a.all or a.daily or a.quotes:
         build_quotes()
+    # 历史触发流水：data.json 的 hist 摘要依赖它，必须先刷新。
+    # 云端没有 data/daily（不入库），build_history 自动降级为「只追加当日触发」。
     if a.all or a.daily or a.weekly or a.data:
+        from dashboard.history import build as build_history
+        build_history()
         build_data(static_obj)
     if a.all or a.daily or a.weekly or a.futures:
         build_futures()

@@ -303,3 +303,63 @@ select { background-image: none; padding-right: 30px; }
 .bar-track { height: 6px; background: var(--card2); border-radius: 4px; overflow: hidden; margin-top: 7px; }
 .bar-fill { height: 100%; background: var(--blue); border-radius: 4px; }
 .hr { height: .5px; background: var(--sep); margin: 12px 0; }
+
+/* ============================================================
+   历史触发页（history.html）
+   ============================================================ */
+body.page-history { padding-bottom: 30px; }
+
+/* 每日触发热力条：柱高与深浅同时编码当日触发数 */
+.cal { display: flex; gap: 2px; align-items: flex-end; height: 44px; padding: 4px 16px 0; }
+.cal i {
+  flex: 1; min-height: 2px; border-radius: 2px;
+  background: var(--blue); opacity: .22;
+}
+.cal i[data-hot="1"] { opacity: .55; }
+.cal i[data-hot="2"] { opacity: 1; }
+.cal-x {
+  display: flex; justify-content: space-between;
+  padding: 5px 16px 12px; font-size: 10.5px; color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 列表内的日期分组标题 */
+.daysep {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 9px 16px; background: var(--card2);
+  border-top: .5px solid var(--sep2);
+  font-size: 12.5px; font-weight: 620; color: var(--text2);
+}
+.daysep:first-child { border-top: none; }
+.daysep .wk { font-weight: 500; color: var(--text3); }
+.daysep .n { margin-left: auto; font-weight: 500; font-size: 11.5px; color: var(--text3); }
+
+/* 搜索 + 状态筛选 */
+.filterbar {
+  display: flex; gap: 6px; align-items: center;
+  padding: 0 16px 10px; flex-wrap: wrap;
+}
+.filterbar input { flex: 1 1 140px; min-width: 0; font-size: 14px; padding: 7px 11px; }
+
+/* 行业分布 */
+.indrow { padding: 9px 16px 11px; border-top: .5px solid var(--sep2); }
+.indrow:first-child { border-top: none; }
+.indrow .h { display: flex; gap: 10px; justify-content: space-between; font-size: 13px; }
+.indrow .h b {
+  font-weight: 570; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.indrow .h span { flex: 0 0 auto; color: var(--text3); font-variant-numeric: tabular-nums; }
+
+/* 股票视图里的触发日期点 */
+.dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.dots b {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  color: var(--text2); background: var(--card2);
+  padding: 1.5px 5px; border-radius: 5px;
+}
+
+/* 首页的「近一月历史触发」入口卡 */
+.hist-link { display: flex; align-items: center; gap: 12px; }
+.hist-link .t { flex: 1; min-width: 0; font-size: 15px; font-weight: 620; letter-spacing: -.2px; }
+.hist-link .s { font-size: 12px; color: var(--text3); margin-top: 2px; }

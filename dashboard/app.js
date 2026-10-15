@@ -6,144 +6,27 @@
 (function () {
   'use strict';
 
-  const REPO = 'wpxzhl66-art/ma60-alert';
-  const REMOTE = 'https://raw.githubusercontent.com/' + REPO + '/main/dashboard';
+  /* 共享核心：常量、DOM 工具、排序组件、数据加载（见 core.js） */
+  const C = window.WBcore;
+  const { REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
+          readSort, curField, sortRows, sortTip, drawSortBar,
+          mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.5.1';
+  const APP_VERSION = 'v1.6.0';
 
   const S = {
     data: null,        // data.json
     static: null,      // static.json
     quotes: {},        // quotes.json：全市场最新价（账户估值兜底）
     quotesDate: '',
-    one: {},           // 单股/单品种周线缓存（按需拉取，key = code|fq）
     codeIndex: null,   // 搜索用
     fut: null,         // fut.json：期货加权指数板块（切到该页才拉）
     futLoading: null,
-    sort: {},          // 各列表的当前排序 {storeKey: {id, dir}}
+    sort: C.sort,      // 各列表的当前排序（由 core.js 维护）
   };
 
-  /* ------------------------------------------------ 工具 */
-  const $ = (id) => document.getElementById(id);
-  const el = (tag, cls, html) => {
-    const d = document.createElement(tag);
-    if (cls) d.className = cls;
-    if (html != null) d.innerHTML = html;
-    return d;
-  };
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const num = (v, d) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d == null ? 2 : d);
-  const pct = (v, d) => (v == null || isNaN(v)) ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(d == null ? 2 : d) + '%';
-  const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : 'muted');
-  const yi = (v) => (v == null || isNaN(v) || !v) ? '—' : Number(v).toFixed(1) + ' 亿';
-
-  function timeAgo(iso) {
-    if (!iso) return '—';
-    const t = new Date(iso.replace(' ', 'T'));
-    if (isNaN(t)) return iso;
-    const s = (Date.now() - t.getTime()) / 1000;
-    if (s < 60) return '刚刚';
-    if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
-    if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
-    return Math.floor(s / 86400) + ' 天前';
-  }
-
-  /* ------------------------------------------------ 排序
-     三个列表共用一套「排序栏」：
-       · 点未选中的字段 → 切到该字段，用它的默认方向
-       · 再点已选中的字段 → 翻转方向
-       · 选择写入 localStorage，下次打开保持
-
-     字段描述 { id, label, key(item), dir 默认方向, abs 按绝对值 }
-     注意 abs（只给「偏离」用）：偏离是有正负的，但用户关心的是「离 60 周线多远」，
-     所以排序键取绝对值 —— 越接近 0 越靠前。 */
-  const SORT_LS = 'wb.sort.';
-
-  function readSort(storeKey, spec) {
-    let raw = null;
-    try { raw = JSON.parse(localStorage.getItem(SORT_LS + storeKey) || 'null'); }
-    catch (e) { raw = null; }
-    const hit = raw && spec.filter((s) => s.id === raw.id)[0];
-    if (hit) return { id: hit.id, dir: raw.dir === 'asc' ? 'asc' : 'desc' };
-    return { id: spec[0].id, dir: spec[0].dir || 'desc' };
-  }
-
-  function writeSort(storeKey, st) {
-    try { localStorage.setItem(SORT_LS + storeKey, JSON.stringify(st)); }
-    catch (e) { /* 隐私模式下忽略 */ }
-  }
-
-  function curField(spec, st) {
-    return spec.filter((s) => s.id === st.id)[0] || spec[0];
-  }
-
-  /** 排序：缺值一律沉底（不随方向翻转）；字符串按中文（拼音）比较 */
-  function sortRows(rows, spec, st) {
-    const f = curField(spec, st);
-    const sign = st.dir === 'asc' ? 1 : -1;
-    const val = (r) => {
-      let v = f.key(r);
-      if (f.abs) v = Math.abs(v == null || isNaN(v) ? NaN : v);
-      return v;
-    };
-    return rows.slice().sort((a, b) => {
-      const x = val(a), y = val(b);
-      if (typeof x === 'string' || typeof y === 'string') {
-        const ex = (x == null || x === ''), ey = (y == null || y === '');
-        if (ex && ey) return 0;
-        if (ex) return 1;
-        if (ey) return -1;
-        return sign * String(x).localeCompare(String(y), 'zh-Hans-CN');
-      }
-      const nx = (x == null || isNaN(x)), ny = (y == null || isNaN(y));
-      if (nx && ny) return 0;
-      if (nx) return 1;
-      if (ny) return -1;
-      return sign * (x - y);
-    });
-  }
-
-  /** 排序说明，显示在列表标题右侧 */
-  function sortTip(s, dir) {
-    if (s.id === 'dev') {
-      return dir === 'asc' ? '按偏离绝对值升序 · 最贴近 60 周线的排最前'
-                           : '按偏离绝对值降序 · 偏离最远的排最前';
-    }
-    if (s.id === 'ind' || s.id === 'sec') return '按名称聚拢同行业/同板块';
-    return s.label + (dir === 'asc' ? ' 从小到大' : ' 从大到小');
-  }
-
-  function drawSortBar(node, spec, st, onPick) {
-    node.innerHTML = '';
-    spec.forEach((s) => {
-      const b = el('button', 'chip' + (s.id === st.id ? ' on' : ''));
-      b.type = 'button';
-      b.innerHTML = esc(s.label) +
-        (s.id === st.id ? '<span class="ar">' + (st.dir === 'asc' ? '▲' : '▼') + '</span>' : '');
-      b.addEventListener('click', () => onPick(s.id));
-      node.appendChild(b);
-    });
-  }
-
-  /** 挂载排序栏到 S.sort[storeKey]，状态变化时回调 onChange */
-  function mountSort(storeKey, nodeId, spec, onChange) {
-    S.sort[storeKey] = readSort(storeKey, spec);
-    const node = $(nodeId);
-    const repaint = () => drawSortBar(node, spec, S.sort[storeKey], (id) => {
-      const cur = S.sort[storeKey];
-      if (id === cur.id) cur.dir = cur.dir === 'asc' ? 'desc' : 'asc';
-      else {
-        const f = spec.filter((s) => s.id === id)[0];
-        S.sort[storeKey] = { id: id, dir: f.dir || 'desc' };
-      }
-      writeSort(storeKey, S.sort[storeKey]);
-      repaint();
-      onChange();
-    });
-    repaint();
-  }
+  /* 排序组件（readSort / sortRows / mountSort 等）已移入 core.js */
 
   /* A 股触发明细的排序字段（前 4 项为用户明确要做排序的口径） */
   const TRIG_SORTS = [
@@ -182,12 +65,6 @@
     return t ? '<span>' + esc(t) + '</span>' : '';
   }
 
-  /** 元 → 万元/亿元（腾讯成交额原始单位为万元） */
-  function amtWan(w) {
-    if (w == null || isNaN(w) || !w) return '—';
-    return w >= 10000 ? (w / 10000).toFixed(2) + ' 亿' : Math.round(w) + ' 万';
-  }
-
   /** 持仓量（手）→ 手/万手 */
   function oiTxt(v) {
     if (v == null || isNaN(v) || !v) return '—';
@@ -205,53 +82,7 @@
     return window.echarts.init(node);
   }
 
-  /* ------------------------------------------------ 数据加载 */
-  async function loadJSON(name) {
-    const urls = [REMOTE + '/' + name + '?_=' + Date.now(), './' + name];
-    let err = null;
-    for (const u of urls) {
-      try {
-        const r = await fetch(u, { cache: 'no-store' });
-        if (!r.ok) { err = new Error(r.status); continue; }
-        return await r.json();
-      } catch (e) { err = e; }
-    }
-    throw err || new Error('加载失败：' + name);
-  }
-
-  /* ------------------------------------------------ 单股/单品种周线（按需、前复权）
-     整包 weekly.json（4MB+）已于 v1.2.1 停用——国内访问 raw.githubusercontent
-     基本拉不完，点开股票会一直转圈。现在只取这一只的周线（几 KB，前复权口径，
-     与行情软件显示一致），失败就直接提示，不再做整包回退。 */
-  const WK_URL = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=';
-
-  async function fetchWeeklyOne(code, fq) {
-    fq = (fq === undefined || fq === null) ? 'qfq' : fq;   // 默认前复权（看盘口径）
-    const key = code + '|' + fq;
-    if (S.one[key]) return S.one[key];
-    const sec = code.replace('.', '');
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 9000);
-    try {
-      const r = await fetch(WK_URL + sec + ',week,,,320,' + fq, { signal: ctl.signal });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const j = await r.json();
-      const blk = j && j.data && j.data[sec];
-      const want = fq === 'qfq' ? 'qfqweek' : (fq === 'hfq' ? 'hfqweek' : 'week');
-      let bars = (blk && Array.isArray(blk[want]) && blk[want].length) ? blk[want] : null;
-      if (!bars && blk) {
-        for (const k of ['qfqweek', 'week', 'hfqweek']) {
-          if (Array.isArray(blk[k]) && blk[k].length) { bars = blk[k]; break; }
-        }
-      }
-      if (!bars) throw new Error('无周线数据');
-      const out = bars.filter((b) => b && b.length >= 3)
-        .map((b) => ({ week: b[0], close: +b[2] }));
-      if (!out.length) throw new Error('无周线数据');
-      S.one[key] = out;
-      return out;
-    } finally { clearTimeout(timer); }
-  }
+  /* 数据加载（loadJSON）与单股周线（fetchWeeklyOne）已移入 core.js */
 
   /* ------------------------------------------------ 实时行情（JSONP 式 script 注入） */
   function readQuoteGlobals(codes, out) {
@@ -342,6 +173,21 @@
     const t = d.triggers || {};
     const rows = t.rows || [];
     const today = d.today;
+
+    // 近一月历史触发入口卡（数据来自 data.json 的 hist 摘要字段）
+    const h = d.hist || {};
+    const hc = $('histCard');
+    if (hc) {
+      if (h.events) {
+        hc.style.display = '';
+        const span = String(h.start || '').slice(5) + ' ~ ' + String(h.end || '').slice(5);
+        const pctAbove = h.stocks ? Math.round(h.above_now / h.stocks * 100) : 0;
+        $('histBox').innerHTML =
+          '<div class="t"><div>近一月触发 ' + h.events + ' 次 · ' + h.stocks + ' 只</div>' +
+          '<div class="s">' + span + ' · 当前仍站上 60 周线的占 ' + pctAbove + '%</div></div>' +
+          '<a class="btn sec sm" href="./history.html">查看历史</a>';
+      } else hc.style.display = 'none';
+    }
 
     $('subTitle').textContent = '数据 ' + (d.health && d.health.last_update ? d.health.last_update : '—') +
       ' · ' + (t.day || '—');
@@ -735,12 +581,6 @@
     });
   }
 
-  function metric(k, v, x, cl) {
-    return '<div class="metric"><div class="k">' + esc(k) + '</div>' +
-      '<div class="v sm ' + (cl || '') + '">' + esc(v) + '</div>' +
-      (x ? '<div class="x">' + esc(x) + '</div>' : '') + '</div>';
-  }
-
   let trendChart = null;
   function drawTrend(tr) {
     const node = $('trendChart');
@@ -791,52 +631,7 @@
   let kChart = null;
   let kContext = null;
 
-  /** 周线折线图的公共配置。股票图与期货图共用，保证交互一致。 */
-  function weeklyChartOption(weeks, closes, m60, o) {
-    return {
-      animation: false,
-      grid: { left: o.gridLeft || 46, right: 14, top: 22, bottom: 30 },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
-        textStyle: { color: '#fff', fontSize: 12 },
-        formatter: (ps) => {
-          if (!ps || !ps.length) return '';
-          const i = ps[0].dataIndex;
-          let s = weeks[i] + '<br/>' + o.closeLabel + ' <b>' + o.fmt(closes[i]) + '</b>';
-          if (m60[i] != null) s += '<br/>60 周线 ' + o.fmt(m60[i]);
-          return s;
-        },
-      },
-      xAxis: {
-        type: 'category', data: weeks, boundaryGap: false,
-        axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
-        axisTick: { show: false },
-        axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
-      },
-      yAxis: {
-        type: 'value', scale: true,
-        splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
-        axisLabel: { color: '#8e8e93', fontSize: 10 },
-      },
-      series: [
-        {
-          name: o.closeLabel, type: 'line', data: closes, smooth: false,
-          symbol: 'none', lineStyle: { width: 1.8, color: o.color },
-          areaStyle: {
-            color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [{ offset: 0, color: o.areaTop },
-                           { offset: 1, color: o.areaBottom }] },
-          },
-          markPoint: o.markPoint ? { data: o.markPoint, silent: true } : undefined,
-        },
-        {
-          name: '60 周线', type: 'line', data: m60, symbol: 'none',
-          lineStyle: { width: 1.8, color: '#ff9500' },
-        },
-      ],
-    };
-  }
+  /* 周线图公共配置（weeklyChartOption）与 ma() 已移入 core.js */
 
   async function openKline(code, name) {
     kContext = { code: code, name: name, kind: 'stock' };
@@ -853,17 +648,6 @@
     }
     renderKline(code, series);
     renderChartStats(code, series);
-  }
-
-  function ma(arr, n) {
-    const out = [];
-    let sum = 0;
-    for (let i = 0; i < arr.length; i++) {
-      sum += arr[i];
-      if (i >= n) sum -= arr[i - n];
-      out.push(i >= n - 1 ? +(sum / n).toFixed(4) : null);
-    }
-    return out;
   }
 
   function renderKline(code, series) {

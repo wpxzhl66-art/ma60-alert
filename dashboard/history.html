@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>近一月历史触发 · 60周线预警台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="page-history">
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <h1>近一月历史触发</h1>
+      <div class="sub" id="subTitle">正在加载…</div>
+    </div>
+    <a class="pill" href="./index.html">← 今日看板</a>
+    <span class="ver" id="verBadge" title="看板版本">v1.6.0</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ==================== 概览 ==================== -->
+  <div class="card" id="heroBox">
+    <div class="loading"><span class="spinner"></span></div>
+  </div>
+
+  <!-- ==================== 每日触发 ==================== -->
+  <div class="section-label">每日触发</div>
+  <div class="card">
+    <div class="card-head">
+      <h2>每个交易日扫出的标的数</h2>
+      <div class="hint" id="calHint">—</div>
+    </div>
+    <div class="cal" id="cal"></div>
+    <div class="cal-x" id="calX"></div>
+    <div class="note" id="calNote"></div>
+  </div>
+
+  <!-- ==================== 行业分布 ==================== -->
+  <div class="section-label">行业分布</div>
+  <div class="card">
+    <div class="card-head">
+      <h2>触发次数最多的申万行业</h2>
+      <div class="hint" id="indHint">—</div>
+    </div>
+    <div class="list" id="indList"></div>
+  </div>
+
+  <!-- ==================== 触发明细 ==================== -->
+  <div class="section-label">触发明细</div>
+  <div class="card">
+    <div class="card-head">
+      <h2 id="listTitle">按日期</h2>
+      <div class="hint" id="listHint">—</div>
+    </div>
+
+    <div class="card-body" style="padding-bottom:10px">
+      <div class="seg" id="viewSeg">
+        <button class="on" data-view="day">按日期</button>
+        <button data-view="stock">按股票</button>
+      </div>
+    </div>
+
+    <div class="filterbar">
+      <input id="q" placeholder="搜索代码 / 名称 / 行业" autocomplete="off">
+      <button class="chip on" id="scAll" data-scope="all">全部</button>
+      <button class="chip" id="scAbove" data-scope="above">仍站上</button>
+      <button class="chip" id="scBelow" data-scope="below">已跌破</button>
+    </div>
+
+    <div class="sortbar" id="sortBar"></div>
+    <div class="list" id="evList">
+      <div class="loading"><span class="spinner"></span></div>
+    </div>
+    <div class="note" id="listNote"></div>
+  </div>
+
+</main>
+
+<!-- ==================== 周 K 弹层 ==================== -->
+<div class="sheet-mask" id="chartMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="chartTitle">周 K</h3>
+      <span class="x" id="chartClose">✕</span>
+    </div>
+    <div id="kChart" class="chart" style="height:330px"></div>
+    <div class="pad">
+      <div class="card">
+        <div class="metrics c3" id="chartStats"></div>
+      </div>
+      <div class="note" style="padding:12px 0 0" id="chartNote"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 图表库：优先本地（随站点发布，国内可达），失败再退公共 CDN -->
+<script src="./vendor/echarts.min.js"
+        onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js'"></script>
+<script src="core.js"></script>
+<script src="history.js"></script>
+</body>
+</html>
