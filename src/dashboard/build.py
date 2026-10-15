@@ -407,6 +407,64 @@ def build_futures() -> dict:
     return obj
 
 
+def build_pattern() -> dict:
+    """生成 dashboard/pattern.json：右侧反转形态扫描结果 + 回测结论。
+
+    数据源为本机扫描产物 output/pattern/latest.json（形态判定依赖日线仓，
+    云端没有 → 云端跑不出这个文件，因此**绝不能让它覆盖既有结果**）。
+    回测结论从 output/_signal/pattern_backtest.json 提取后内嵌，
+    使推送文案与看板引用的数字都来自产物而非硬编码。
+
+    两道防回退保护（2026-10-15 推送覆盖云端数据的教训）：
+      1. 本机产物缺失 → 原样保留既有 pattern.json，不写空文件；
+      2. 本机产物日期早于线上 → 不覆盖。
+    """
+    src = ROOT / "output" / "pattern" / "latest.json"
+    obj = _read_json(src, {}) or {}
+    old = _read_json(OUT / "pattern.json", {}) or {}
+    if not obj.get("day"):
+        print("[pattern] 本机扫描产物缺失（云端无日线仓属正常），保留既有 pattern.json")
+        return old
+    if old.get("day") and str(obj["day"]) < str(old["day"]):
+        print(f"[pattern] 本机产物 {obj['day']} 早于线上 {old['day']}，不覆盖")
+        return old
+
+    bt = _read_json(ROOT / "output" / "_signal" / "pattern_backtest.json", {}) or {}
+    summary: dict = {}
+    for k in ("e4", "e3", "e2"):
+        st = (bt.get("stages") or {}).get(k) or {}
+        stat = st.get("stat") or {}
+        d20, d60 = stat.get("20") or {}, stat.get("60") or {}
+        if not d60:
+            continue
+        summary[k] = {
+            "n": int(st.get("n_dedup") or 0),
+            "ex20_med": round(float(d20.get("ex_med") or 0) * 100, 2),
+            "ex60_med": round(float(d60.get("ex_med") or 0) * 100, 2),
+            "ex60_win": round(float(d60.get("ex_win") or 0) * 100, 1),
+            "ex60_mean": round(float(d60.get("ex_mean") or 0) * 100, 2),
+            "t60": round(float(d60.get("clust_t") or 0), 2),
+            "gap_zt": round(float(st.get("gap_zt") or 0) * 100, 1),
+        }
+
+    out = {
+        "generated_at": _now().isoformat(timespec="seconds"),
+        "day": obj.get("day", ""),
+        "ts": obj.get("ts", ""),
+        "scanned": int(obj.get("scanned") or 0),
+        "lag": obj.get("lag", ""),
+        "counts": obj.get("counts") or {"A": 0, "B": 0, "C": 0},
+        "rows": obj.get("rows") or [],
+        "backtest": summary,
+        "span": (bt.get("meta") or {}).get("span", []),
+    }
+    _write_if_changed(OUT / "pattern.json", _dump(out), "pattern")
+    c = out["counts"]
+    print(f"      形态扫描 {out['day']} · 扫描 {out['scanned']} 只 · "
+          f"A {c.get('A', 0)} / B {c.get('B', 0)} / C {c.get('C', 0)}")
+    return out
+
+
 def build_data(static_obj: dict | None = None) -> dict:
     latest = _read_json(STATE / "latest_triggers.json", {}) or {}
     push = _read_json(STATE / "push_state.json", {}) or {}
@@ -477,9 +535,10 @@ def main() -> None:
     ap.add_argument("--quotes", action="store_true")
     ap.add_argument("--data", action="store_true")
     ap.add_argument("--futures", action="store_true", help="期货板块 fut.json")
+    ap.add_argument("--pattern", action="store_true", help="右侧反转形态 pattern.json")
     a = ap.parse_args()
     if not any([a.all, a.daily, a.weekly, a.names, a.static, a.quotes, a.data,
-                a.futures]):
+                a.futures, a.pattern]):
         a.all = True
 
     static_obj = None
@@ -497,6 +556,9 @@ def main() -> None:
         build_data(static_obj)
     if a.all or a.daily or a.weekly or a.futures:
         build_futures()
+    # 形态数据必须在本机跑（云端没有日线仓），不与 --daily 联动，避免云端覆盖
+    if a.all or a.pattern:
+        build_pattern()
 
 
 if __name__ == "__main__":

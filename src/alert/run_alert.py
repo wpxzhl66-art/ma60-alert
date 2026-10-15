@@ -294,12 +294,15 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
 def run_notify(sha: str):
     """云端第三段：读 pending，组装带 commit-sha 的图表 URL 并推送。
 
-    A 股与期货共用同一条消息与每日额度：
-      * A 股有触发 → 期货作为一节追加在末尾
-      * A 股无触发而期货有 → 单独推一条期货主题
-      * 两边都无 → 不推送（省额度）
+    A 股、期货与右侧反转形态共用同一条消息与每日额度（Server酱 5 条/天）：
+      * A 股有触发 → 期货、形态各自作为一节追加在末尾
+      * A 股无触发而其余板块有 → 单独推一条，标题切到该板块主题
+      * 全都无内容 → 不推送（省额度）
+
+    形态段落只在**收盘确认轮**追加：形态扫描由本机在收盘后完成并写出
+    dashboard/pattern.json，云端不产出该文件（没有日线仓）。
     """
-    from . import fut_alert
+    from . import fut_alert, pattern_alert
 
     if not PENDING.exists():
         print("[notify] 无 pending，跳过")
@@ -317,14 +320,26 @@ def run_notify(sha: str):
         title, desp = template.build_message(trig, res["mode"])
 
     fut_txt, fut_codes = fut_alert.build_section()
-    if fut_txt:
+    pat_txt, pat_n = "", 0
+    if res.get("mode") == "confirm":
+        try:
+            pat_txt, pat_n = pattern_alert.build_section()
+        except Exception as exc:                       # noqa: BLE001
+            print(f"[pattern] 段落组装失败：{type(exc).__name__} {exc}")
+
+    extra = [t for t in (fut_txt, pat_txt) if t]
+    if extra:
+        body = "\n\n---\n\n".join(extra)
         if res["n"]:
-            desp = desp + "\n\n---\n\n" + fut_txt
+            desp = desp + "\n\n---\n\n" + body
         else:
-            title = f"【期货60周线】{len(fut_codes)} 个品种靠近加权均线"
-            desp = fut_txt
+            if fut_txt:
+                title = f"【期货60周线】{len(fut_codes)} 个品种靠近加权均线"
+            else:
+                title = f"【右侧反转形态】{pat_n} 只候选（追涨风险提示）"
+            desp = body
     elif not res["n"]:
-        print("[notify] A 股与期货均无新触发，跳过推送（不占额度）")
+        print("[notify] A 股、期货与形态均无内容，跳过推送（不占额度）")
         return
 
     if pusher.send(title, desp):

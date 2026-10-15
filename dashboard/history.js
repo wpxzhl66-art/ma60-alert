@@ -12,7 +12,7 @@
           loadJSON, fetchWeeklyOne, weeklyChartOption, ma } = C;
 
   // 交付物版本号：每次改动递增（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.6.0';
+  const APP_VERSION = 'v1.7.0';
 
   const S = {
     d: null,          // history.json
@@ -69,7 +69,11 @@
         metric('当前已跌破', s.below_now + ' 只', '触发后回落') +
       '</div>' +
       '<div class="note">口径：收盘价由下向上越过 60 周线（后复权），与实时扫描一致。' +
-        '「当前」指数据日 ' + esc(d0.data_date || '—') + '。</div>';
+        '「当前」指数据日 ' + esc(d0.data_date || '—') + '。<br/>' +
+        '<b>信号性质</b>：14 年全历史回测（5.3 万次触发）显示，触发后跑输全市场等权 ' +
+        '20 日 −2.1% / 60 日 −4.2% / 120 日 −6.8%，16 个年份无一例外 —— ' +
+        '<b>这是掉队风险提示，不是买入信号</b>。下方「首次触发至今」是绝对涨跌，' +
+        '要对照同期大盘看才有意义。</div>';
     $('subTitle').textContent =
       '最近 ' + d0.window_days + ' 天 · 数据截至 ' + (d0.data_date || '—') +
       ' · 生成于 ' + String(d0.generated_at || '').slice(5, 16).replace('T', ' ');

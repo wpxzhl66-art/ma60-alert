@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.6.0';
+  const APP_VERSION = 'v1.8.0';
 
   const S = {
     data: null,        // data.json
@@ -23,6 +23,8 @@
     codeIndex: null,   // 搜索用
     fut: null,         // fut.json：期货加权指数板块（切到该页才拉）
     futLoading: null,
+    pat: null,         // pattern.json：右侧反转形态板块（切到该页才拉）
+    patLoading: null,
     sort: C.sort,      // 各列表的当前排序（由 core.js 维护）
   };
 
@@ -168,6 +170,28 @@
       ' · 定时可能有数分钟延迟，节假日自动跳过</div></div>';
   }
 
+  /** 首页「形态」入口卡：只有本机扫过才有数据，缺失时整卡隐藏 */
+  function fillPatCard() {
+    const p = S.pat, box = $('patBox'), card = $('patCard');
+    if (!box || !card) return;
+    if (!p || !p.day) { card.style.display = 'none'; return; }
+    const c = p.counts || {};
+    const stale = S.data && S.data.today && p.day !== S.data.today;
+    card.style.display = '';
+    box.innerHTML =
+      '<div class="t"><div>右侧反转形态 · 今日启动 ' + (c.A || 0) + ' 只</div>' +
+      '<div class="s">' + esc(p.day) + ' · 洗盘观察 ' + (c.B || 0) + ' · 新突破 ' +
+        (c.C || 0) + (stale ? ' · 非今日扫描' : '') + ' · 追涨风险提示</div></div>' +
+      '<button class="btn sec sm" id="patGo">查看形态</button>';
+    const go = $('patGo');
+    if (go) {
+      go.addEventListener('click', () => {
+        const b = document.querySelector('.tabbar button[data-tab="pattern"]');
+        if (b) b.click();
+      });
+    }
+  }
+
   function renderToday() {
     const d = S.data;
     const t = d.triggers || {};
@@ -205,8 +229,8 @@
     const ts = t.ts || '';
     $('todayHero').innerHTML =
       '<div class="metrics c2">' +
-        '<div class="metric hero"><div class="k">当日触及 60 周线（A 类上穿）</div>' +
-          '<div class="v up">' + rows.length + ' <span style="font-size:15px;font-weight:600">只</span></div>' +
+        '<div class="metric hero"><div class="k">当日触及 60 周线（掉队风险）</div>' +
+          '<div class="v">' + rows.length + ' <span style="font-size:15px;font-weight:600">只</span></div>' +
           '<div class="x">' + esc(t.day || '—') + ' · ' + esc(modeLabel) + ' · 快照 ' + (t.scanned || 0) + ' 只</div>' +
         '</div>' +
         '<div class="metric"><div class="k">本次新触发</div><div class="v sm">' + newOnes + ' 只</div>' +
@@ -240,16 +264,36 @@
     $('trigNote').innerHTML =
       '口径：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
       '「偏离」＝ 现价高于或低于 60 周线的百分比；「量比」＝ 今日成交额 / 近 20 日均成交额。' +
-      '切换排序后，若该字段平时不显示，会临时补在编号行里。';
+      '切换排序后，若该字段平时不显示，会临时补在编号行里。<br/>' +
+      '<b>信号性质</b>：14 年全历史回测（5.3 万次触发）显示，触发后跑输全市场等权 ' +
+      '20 日 −2.1% / 60 日 −4.2% / 120 日 −6.8%，16 个年份无一例外。' +
+      '<b>这是掉队风险提示，不是买入信号</b> —— 持仓股触发宜考虑减仓，空仓者不宜据此买入。<br/>' +
+      '按量能分档：<span class="lv hot">放量追高</span> 掉队最明显（+60 日 −6.4%，胜率 34%）；' +
+      '<span class="lv calm">缩量温和</span> 相对轻（+60 日 −2.8%，胜率 42%）。';
+  }
+
+  /** 按量能热度给触发分档。阈值取自 14 年全历史回测的分档超额中位（+60 日）：
+   *  量比≥2.5 或 换手≥5% → −6.4%/−7.6%（掉队最明显）；量比<1.0 且 换手<2% → −2.8%/−3.0%。 */
+  function riskLevel(r) {
+    const ok = (v) => typeof v === 'number' && isFinite(v);
+    if ((ok(r.amt_ratio) && r.amt_ratio >= 2.5) || (ok(r.turnover) && r.turnover >= 5)) {
+      return { text: '放量追高', cls: 'hot' };
+    }
+    if (ok(r.amt_ratio) && r.amt_ratio < 1.0 && ok(r.turnover) && r.turnover < 2) {
+      return { text: '缩量温和', cls: 'calm' };
+    }
+    return null;
   }
 
   function trigRow(r, i) {
     const row = el('div', 'row tap');
     const devCls = r.dev_pct > 0 ? 'up' : 'down';
+    const lv = riskLevel(r);
+    const lvTag = lv ? ' <span class="lv ' + lv.cls + '">' + lv.text + '</span>' : '';
     row.innerHTML =
       '<div class="idx">' + (i + 1) + '</div>' +
       '<div class="grow">' +
-        '<div class="t1">' + esc(r.name) + ' <span class="tag">' + esc(r.industry) + '</span></div>' +
+        '<div class="t1">' + esc(r.name) + lvTag + ' <span class="tag">' + esc(r.industry) + '</span></div>' +
         '<div class="t2"><span class="code">' + esc(r.code.replace('.', '')) + '</span>' +
           '<span>量比 ' + num(r.amt_ratio, 2) + '</span>' +
           '<span>年内上穿 ' + num(r.a_events_1y, 0) + ' 次</span>' +
@@ -473,6 +517,147 @@
       '曲线为该品种的<b>持仓量加权价</b>与 <b>60 周线</b>：' +
       'Σ(合约收盘 × 合约持仓量) / Σ(持仓量)，覆盖全部在市合约。' +
       '加权口径不产生换月跳空，因此 60 周线不会被主力换月的价格断崖污染。';
+  }
+
+  /* 右侧反转形态：C 类（刚突破前高）数量最多，单独给一套排序 */
+  const PAT_SORTS = [
+    { id: 'chg', label: '涨跌幅', key: (r) => r.chg, dir: 'desc' },
+    { id: 'vol', label: '量比', key: (r) => r.vol, dir: 'desc' },
+    { id: 'brk', label: '突破距今日', key: (r) => r.brk_age, dir: 'asc' },
+    { id: 'dd', label: '前期跌幅', key: (r) => r.dd, dir: 'asc' },
+    { id: 'mv', label: '市值', key: (r) => r.mv, dir: 'desc' },
+    { id: 'ind', label: '行业', key: (r) => r.industry, dir: 'asc' },
+  ];
+
+  /* 排序字段若不在行内固定展示，就在副标题里补一项 */
+  const PAT_EXTRA = {
+    dd: (r) => '前期跌幅 ' + num(r.dd, 1) + '%',
+    mv: (r) => '市值 ' + yi(r.mv),
+  };
+
+  /* ------------------------------------------------ 视图：形态
+     右侧反转五阶段（用户 2026-10-15 提供的选股思路）。
+     数据由**本机**在收盘后扫描写入 dashboard/pattern.json —— 云端没有日线仓、
+     跑不出这个文件，因此是「本机扫描 → 提交仓库 → 看板与推送消费」的单向链路。
+     ⚠️ 定位（14 年全历史回测）：阶段④「启动日」介入后 60 日跑输全市场等权
+        8.41%（胜率 31.7%，16 个年份无一为正）；阶段③ −4.65%、阶段② −6.22%。
+        → 这是**追涨风险提示**，不是买入信号。改文案前先读
+        output/_signal/pattern_backtest.json。 */
+  function loadPattern() {
+    if (S.pat) return Promise.resolve(S.pat);
+    if (S.patLoading) return S.patLoading;
+    S.patLoading = loadJSON('pattern.json').then((d) => { S.pat = d; return d; })
+      .catch((e) => { S.patLoading = null; throw e; });
+    return S.patLoading;
+  }
+
+  function patRow(r, i) {
+    const row = el('div', 'row tap');
+    const zt = r.zt ? ' <span class="tag bo">涨停</span>' : '';
+    const t2 = ['<span class="code">' + esc(String(r.code).replace('.', '')) + '</span>',
+                '<span>量比 ' + num(r.vol, 2) + '</span>'];
+    if (r.retrace != null) t2.push('<span>距高点 ' + num(r.retrace, 1) + '%</span>');
+    if (r.span != null) t2.push('<span>回踩 ' + num(r.span, 0) + ' 日</span>');
+    if (r.stage === 'C' && r.brk_age != null) {
+      t2.push('<span>突破 ' + num(r.brk_age, 0) + ' 日前</span>');
+    }
+    const ex = PAT_EXTRA[S.sort.pat.id];
+    if (ex) t2.push('<span>' + esc(ex(r)) + '</span>');
+    row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="grow">' +
+        '<div class="t1">' + esc(r.name) + zt +
+          ' <span class="tag">' + esc(r.industry) + '</span></div>' +
+        '<div class="t2">' + t2.join('') + '</div>' +
+      '</div>' +
+      '<div class="r">' +
+        '<div class="p">' + num(r.price, 2) + '</div>' +
+        '<div class="s ' + cls(r.chg) + '">' + pct(r.chg, 2) + '</div>' +
+      '</div>';
+    row.addEventListener('click', () => openKline(r.code, r.name));
+    return row;
+  }
+
+  function renderPatList(key) {
+    const d = S.pat || {};
+    const rows = (d.rows || []).filter((r) => r.stage === key);
+    const list = $('pat' + key + 'List');
+    const hint = $('pat' + key + 'Hint');
+    list.innerHTML = '';
+    if (!rows.length) {
+      hint.textContent = '';
+      list.appendChild(el('div', 'empty', '<div class="big">◌</div>今日暂无该类候选。'));
+      return;
+    }
+    const useSort = key === 'C';
+    hint.textContent = '共 ' + rows.length + ' 只' +
+      (useSort ? ' · ' + sortTip(curField(PAT_SORTS, S.sort.pat), S.sort.pat.dir) : '');
+    const sorted = useSort ? sortRows(rows, PAT_SORTS, S.sort.pat) : rows;
+    sorted.forEach((r, i) => list.appendChild(patRow(r, i)));
+  }
+
+  async function renderPattern() {
+    const hero = $('patHero');
+    hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载形态扫描结果…</div>';
+    let d;
+    try {
+      d = await loadPattern();
+    } catch (e) {
+      hero.innerHTML = '<div class="banner err">形态数据加载失败：' + esc(e.message) +
+        '<br><br>该文件由本机收盘后扫描生成并提交，云端不产出。</div>';
+      ['A', 'B', 'C'].forEach((k) => { $('pat' + k + 'List').innerHTML = ''; });
+      return;
+    }
+    const c = d.counts || {};
+    const bt = d.backtest || {};
+    const e4 = bt.e4 || {}, e3 = bt.e3 || {}, e2 = bt.e2 || {};
+    const today = S.data && S.data.today;
+    const stale = d.day && today && d.day !== today;
+
+    hero.innerHTML =
+      '<div class="metrics c2">' +
+        '<div class="metric hero"><div class="k">今日启动（阶段④）</div>' +
+          '<div class="v sm up">' + (c.A || 0) +
+            ' <span style="font-size:15px;font-weight:600">只</span></div>' +
+          '<div class="x">' + esc(d.day || '—') + ' · 扫描 ' + (d.scanned || 0) + ' 只' +
+            (d.ts ? ' · ' + esc(d.ts.slice(11, 16)) : '') + '</div></div>' +
+        '<div class="metric"><div class="k">洗盘观察（阶段③）</div>' +
+          '<div class="v sm">' + (c.B || 0) + ' 只</div>' +
+          '<div class="x">突破后回踩、缩量企稳</div></div>' +
+        '<div class="metric"><div class="k">刚突破前高（阶段②）</div>' +
+          '<div class="v sm">' + (c.C || 0) + ' 只</div>' +
+          '<div class="x">反转确认，等回踩</div></div>' +
+        '<div class="metric"><div class="k">信号性质（14 年回测）</div>' +
+          '<div class="v sm">追涨风险</div>' +
+          '<div class="x">启动后 60 日跑输 ' +
+            Math.abs(e4.ex60_med || -8.41).toFixed(1) + '% · 胜率 ' +
+            (e4.ex60_win || 31.7).toFixed(1) + '%</div></div>' +
+      '</div>' +
+      (stale ? '<div class="banner">形态扫描数据停在 ' + esc(d.day) +
+        '（本机未在今日收盘后执行扫描），下方名单不是今日结果。</div>' : '');
+
+    mountSort('pat', 'patCSort', PAT_SORTS, () => renderPatList('C'));
+    ['A', 'B', 'C'].forEach(renderPatList);
+
+    const pct1 = (v) => (v == null ? '—' : (Math.abs(v)).toFixed(1) + '%');
+    $('patNote').innerHTML =
+      '<b>形态口径</b>（阈值集中在 <span class="code">src/pattern/core.py</span>，' +
+      '回测与实盘共用同一份判定逻辑）：' +
+      '① 前期深跌＝更早 250 日高点 → 近 60 日低点回撤 ≥25%；' +
+      '② 突破＝创 60 日新高（突破本轮反弹前高，而非年线高点）；' +
+      '③ 洗盘＝回踩 4%~20%、不少于 3 日、近 3 日不再破前一日 0.5%；' +
+      '④ 启动＝涨停，或涨幅 ≥5% 且量比 ≥1.8，且收盘创回踩段新高。' +
+      '<br><b>数据链路</b>：本机日线仓 + 当日收盘快照合成，收盘后由本机扫描并提交仓库' +
+      '（云端没有日线仓，故形态不在云端跑）。' +
+      (d.lag ? ' <b>数据提示</b>：' + esc(d.lag) : '') +
+      '<br><b>⚠️ 信号性质（14 年全历史回测）</b>：' +
+      '阶段④启动 ' + (e4.n || 0).toLocaleString() + ' 次 → 60 日超额中位 ' +
+        pct1(e4.ex60_med) + '、胜率 ' + (e4.ex60_win || 0).toFixed(1) + '%；' +
+      '阶段③ ' + (e3.n || 0).toLocaleString() + ' 次 → ' + pct1(e3.ex60_med) + '；' +
+      '阶段② ' + (e2.n || 0).toLocaleString() + ' 次 → ' + pct1(e2.ex60_med) + '。' +
+      '三个阶段<b>全部为负超额，16 个年份无一为正</b>——' +
+      '<b>本板块是追涨风险提示，不是买入信号</b>，按此形态在启动日追进历史上平均跑输市场。';
+
   }
 
   /* ------------------------------------------------ 视图：运行 */
@@ -726,6 +911,7 @@
         window.scrollTo({ top: 0 });
         if (b.dataset.tab === 'system' && trendChart) setTimeout(() => trendChart.resize(), 50);
         if (b.dataset.tab === 'futures') renderFutures();   // 懒加载：切到本页才拉 fut.json
+        if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机生成
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
       });
     });
@@ -765,6 +951,8 @@
         S.quotesDate = (q && q.date) || '';
         if (window.WB_ACCOUNT) window.WB_ACCOUNT.onQuotes();
       }).catch(() => {});
+      // 形态入口卡（数据由本机生成，属可选板块，失败只是不显示该卡）
+      loadJSON('pattern.json').then((p) => { S.pat = p; fillPatCard(); }).catch(() => {});
     } catch (e) {
       $('todayHero').innerHTML = '<div class="banner err">数据加载失败：' + esc(e.message) +
         '<br><br>请确认仓库已推送 dashboard/ 数据文件。</div>';

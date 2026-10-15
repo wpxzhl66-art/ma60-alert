@@ -189,6 +189,11 @@ a { color: var(--blue); text-decoration: none; }
 /* 期货板块：突破（已上穿 60 周线）/ 临近（在均线附近但未上穿） */
 .tag.bo { background: var(--up-bg); color: var(--up); font-weight: 650; }
 .tag.near { background: var(--orange-bg); color: var(--orange); font-weight: 650; }
+/* A 股触发：掉队风险分档（放量上穿=追高，缩量=温和）。阈值见 app.js riskLevel
+   刻意不复用 .tag —— 前端与探针都用「.t1 .tag」定位行业标签，复用会被带偏 */
+.lv { font-size: 10.5px; padding: 1.5px 6px; border-radius: 6px; white-space: nowrap; }
+.lv.hot { background: var(--orange-bg); color: var(--orange); font-weight: 650; }
+.lv.calm { background: var(--blue-bg); color: var(--blue); }
 
 .empty { padding: 34px 16px; text-align: center; color: var(--text3); font-size: 13.5px; }
 .empty .big { font-size: 30px; margin-bottom: 8px; opacity: .5; }

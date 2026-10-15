@@ -16,7 +16,7 @@
       <div class="sub" id="subTitle">正在加载…</div>
     </div>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.6.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.8.0</span>
   </div>
 </header>
 
@@ -32,10 +32,14 @@
       <div class="card-body hist-link" id="histBox" style="padding:13px 16px"></div>
     </div>
 
+    <div class="card" id="patCard" style="display:none">
+      <div class="card-body hist-link" id="patBox" style="padding:13px 16px"></div>
+    </div>
+
     <div class="section-label">今日触发明细</div>
     <div class="card">
       <div class="card-head">
-        <h2>触及 60 周线的 A 股</h2>
+        <h2>触及 60 周线的 A 股 · 掉队风险</h2>
         <div class="hint" id="trigHint">—</div>
       </div>
       <div class="sortbar" id="trigSort"></div>
@@ -43,6 +47,51 @@
         <div class="loading"><span class="spinner"></span></div>
       </div>
       <div class="note" id="trigNote"></div>
+    </div>
+  </section>
+
+  <!-- ==================== 形态 ==================== -->
+  <section class="tabpane" id="pane-pattern">
+    <div class="card" id="patHero">
+      <div class="loading"><span class="spinner"></span></div>
+    </div>
+
+    <div class="section-label">今日启动（阶段④）</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>涨停 / 放量大阳线启动</h2>
+        <div class="hint" id="patAHint">—</div>
+      </div>
+      <div class="list" id="patAList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+    </div>
+
+    <div class="section-label">洗盘观察（阶段③）</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>突破后回踩、缩量企稳</h2>
+        <div class="hint" id="patBHint">—</div>
+      </div>
+      <div class="list" id="patBList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+    </div>
+
+    <div class="section-label">刚突破前高（阶段②）</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>反转确认，等回踩</h2>
+        <div class="hint" id="patCHint">—</div>
+      </div>
+      <div class="sortbar" id="patCSort"></div>
+      <div class="list" id="patCList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="note" id="patNote"></div>
     </div>
   </section>
 
@@ -177,6 +226,7 @@
 <nav class="tabbar">
   <div class="inner">
     <button class="on" data-tab="today"><span class="ico">◎</span>今日</button>
+    <button data-tab="pattern"><span class="ico">◧</span>形态</button>
     <button data-tab="futures"><span class="ico">◈</span>期货</button>
     <button data-tab="system"><span class="ico">☰</span>运行</button>
     <button data-tab="account"><span class="ico">¥</span>账户</button>
