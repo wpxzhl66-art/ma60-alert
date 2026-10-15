@@ -727,7 +727,7 @@ def update_from_baostock(workers: int = 16, budget_sec: int = 6600,
 
 # ---------------------------------------------------------------- 快照（云端）
 def build_snapshot_from_store() -> pd.DataFrame:
-    from .ma60_base import _industry_map, cutoff_monday, stock_from_weekly
+    from .ma60_base import _industry_map, cutoff_monday, stock_from_weekly, STALE_MAX_DAYS
 
     wk = load_weekly()
     last = load_last_close()
@@ -736,6 +736,7 @@ def build_snapshot_from_store() -> pd.DataFrame:
     cutoff = cutoff_monday()
 
     rows = []
+    stale_codes = []
     for code, g in wk.groupby("code"):
         s = g.set_index("week_end")["close"]
         r = stock_from_weekly(code, s, cutoff)
@@ -749,5 +750,15 @@ def build_snapshot_from_store() -> pd.DataFrame:
             continue
         r["avg_amt20"] = float(amt.get(code, np.nan))
         r["industry"] = ind_map.get(code, "未知")
+        # 断头序列防护（与本地 build_snapshot 同口径）：last_date 落后过久的
+        # 在市标的，其 MA60 是几年前的旧值，dev 完全不可信——宁漏勿错。
+        # 实测 2026-10-14 双汇发展（store 序列断头 3.5 年）被算出 +2% 假偏离。
+        if (pd.Timestamp(date.today()) - pd.Timestamp(r["last_date"])).days > STALE_MAX_DAYS:
+            stale_codes.append(code)
+            continue
         rows.append(r)
+    if stale_codes:
+        print(f"[snapshot][警告] {len(stale_codes)} 只标的 last_date 落后超过 "
+              f"{STALE_MAX_DAYS} 天，已排除出扫描：{stale_codes[:20]}"
+              + (" ..." if len(stale_codes) > 20 else ""))
     return pd.DataFrame(rows).set_index("code")

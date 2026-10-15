@@ -40,7 +40,11 @@ def _update_one(code: str) -> tuple[str, str, int]:
         start = (last - timedelta(days=10)).strftime("%Y-%m-%d")
         rs = _SRC.fetch_daily(code, start, None)
         if rs.empty:
-            return (code, "no_new", 0)
+            # 空返回 ≠ 没有新数据：baostock 限流/黑名单时就是静默返回空。
+            # 落后 <30 天按原样记 no_new（节假日正常）；落后过久则显式标记，
+            # 否则序列会像双汇发展那样断头 3.5 年而无人察觉（2026-10 实测）。
+            gap = (pd.Timestamp(date.today()) - last).days
+            return (code, "stale_no_data" if gap > 30 else "no_new", 0)
         before = len(df)
         df = (pd.concat([df, rs[["date", "close", "turn", "amount"]]])
                 .drop_duplicates("date").sort_values("date"))
@@ -61,4 +65,10 @@ def update_recent(codes: list[str] | None = None, workers: int = 16) -> pd.DataF
             results.append(r)
             if i % 500 == 0 or i == len(codes):
                 print(f"  更新 {i}/{len(codes)}  {time.time()-t0:.0f}s", flush=True)
-    return pd.DataFrame(results, columns=["code", "status", "added"])
+    res = pd.DataFrame(results, columns=["code", "status", "added"])
+    stale = res[res["status"] == "stale_no_data"]
+    if len(stale):
+        print(f"[update][警告] {len(stale)} 只标的增量长期返回空（序列已断头，"
+              f"baostock 限流/无数据），需人工核查或转腾讯源重建："
+              f"{stale['code'].tolist()[:20]}" + (" ..." if len(stale) > 20 else ""))
+    return res

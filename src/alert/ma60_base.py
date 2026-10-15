@@ -24,6 +24,12 @@ DATA = ROOT / "data"
 OUT = ROOT / "output" / "alert"
 MA_WEEKS = 60
 SLOPE_WEEKS = 13
+# 断头序列防护（v1.11.1）：在市标的的日线若落后超过该天数，说明其序列
+# 已不可信（增量长期失败被静默跳过，或长期停牌）。用断头序列算出的
+# MA60 是几年前的旧值，dev 会完全失真——实测 2026-10-14 双汇发展
+# 因序列断头 3.5 年 + 除息日昨收失真，被算出 +2% 的假偏离并推送
+# （真实偏离 -4.96%）。宁漏勿错：这类标的直接排除出扫描并打印告警。
+STALE_MAX_DAYS = 45
 
 
 def cutoff_monday(today: date | None = None) -> pd.Timestamp:
@@ -95,6 +101,7 @@ def build_snapshot(progress: bool = True) -> pd.DataFrame:
     ind_map = _industry_map()
 
     rows = []
+    stale_codes = []
     files = sorted(glob.glob(str(DATA / "daily" / "*.csv.gz")))
     for i, f in enumerate(files, 1):
         code = Path(f).name.replace(".csv.gz", "").replace("_", ".", 1)
@@ -114,9 +121,21 @@ def build_snapshot(progress: bool = True) -> pd.DataFrame:
         r["last_date"] = df["date"].max().strftime("%Y-%m-%d")
         r["industry"] = ind_map.get(code, "未知")
         r.pop("weekly_closes")
+        # 断头序列防护：日线落后过久的在市标的不参与判定（宁漏勿错，
+        # 见 STALE_MAX_DAYS 注释）。停牌股同样被排除——反正无法交易，
+        # 预警对它没有意义；复牌后数据更新会自动重新纳入。
+        if (pd.Timestamp(date.today()) - pd.Timestamp(r["last_date"])).days > STALE_MAX_DAYS:
+            stale_codes.append(code)
+            continue
         rows.append(r)
         if progress and i % 500 == 0:
             print(f"  快照 {i}/{len(files)}", flush=True)
+
+    if stale_codes:
+        print(f"[snapshot][警告] {len(stale_codes)} 只标的日线落后超过 "
+              f"{STALE_MAX_DAYS} 天，已排除出扫描（序列断头/长期停牌，"
+              f"MA60 不可信）：{stale_codes[:20]}"
+              + (" ..." if len(stale_codes) > 20 else ""))
 
     snap = pd.DataFrame(rows).set_index("code")
     OUT.mkdir(parents=True, exist_ok=True)

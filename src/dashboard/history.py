@@ -92,25 +92,43 @@ def _live_codes() -> set:
 
 
 def _calendar() -> list:
-    """交易日历：优先沪深300基准，回退用任一只主板股的日线日期。"""
-    for p in (BENCH, DATA / "sh_600000.csv.gz"):
+    """交易日历 = 沪深300基准 ∪ 本地日线实际日期（并集，升序）。
+
+    为什么不能只信基准文件：hs300.csv.gz 由一次性建库脚本生成，
+    日常更新链路（update_recent）只补日线、不更新基准。基准一滞后，
+    rebuild 的窗口终点就跟着滞后——实测 2026-10-16 时日线已到 10-15、
+    基准停在 10-13，10-14/10-15 两天的上穿事件全部漏算。
+    本地日线每天增量更新，取几只流动性主板股的日期并集即可兜底
+    （它们的每个日期都是真实交易日）。
+    """
+    dates: set = set()
+    for p in (BENCH, DATA / "sh_600000.csv.gz", DATA / "sz_000001.csv.gz",
+              DATA / "sh_601318.csv.gz"):
         if not p.exists():
             continue
         try:
             d = pd.read_csv(p, usecols=["date"], parse_dates=["date"])
-            return sorted(pd.DatetimeIndex(d["date"].unique()))
+            dates.update(pd.DatetimeIndex(d["date"].unique()))
         except Exception:  # noqa: BLE001
             continue
-    return []
+    today = pd.Timestamp(_now().date())
+    return sorted(d for d in dates if d <= today)
 
 
 def qfq_factor() -> dict:
     """每只股票的后复权→前复权换算常数 k（前复权 = 后复权 × k）。
 
-    k = 最新真实价 / 最新后复权价。两个量取自同一交易日的收盘：
+    回退路径：k = 最新真实价 / 最新后复权价，两个量取自同一交易日的收盘：
       store/last_close.csv   的 hfq_last_close
       store/last_quotes.csv  的 preclose（行情快照当日的昨收 = 该日收盘）
     偏离度是无量纲的，不换算也准；但价格与行情软件差一个常数，用户会困惑。
+
+    ⚠️ 这只是**回退**：主路径在 build() 里——用该股自身日线（后复权）与
+    行情昨收按同一交易日精确配对。回退有两个天然缺陷：
+      1) 依赖「last_quotes 比 last_close 恰好新一个交易日」的时序约定，
+         手动补跑/顺序颠倒时会错位一天；
+      2) 腾讯兜底标的的 store hfq 是仿射口径，与本地日线（baostock 乘性）
+         不同源——混用会把前复权价算错百分之十几（2026-10-16 实测）。
     """
     lc = STORE / "last_close.csv"
     lq = STORE / "last_quotes.csv"
@@ -194,6 +212,10 @@ def _scan_file(args) -> tuple:
         "dev_now": round((last / mnow - 1) * 100, 3) if mnow else None,
         "above": bool(mnow and last >= mnow),
         "mv": round(mv / 1e8, 1) if mv else None,
+        # 最近 3 个交易日的 {日期: hfq收盘}：供前复权常数与行情「昨收」
+        # 同日精确配对（见 build() 的 kfac 覆盖逻辑）
+        "recent": {ts.strftime("%Y-%m-%d"): float(v)
+                   for ts, v in s.iloc[-3:].items()},
     }
     return (code, events, state)
 
@@ -271,6 +293,27 @@ def build(window_days: int = WINDOW_DAYS, out: Path | None = None) -> dict:
 
     events, states, meta = rebuild(window_days)
     source = "rebuild" if events else "append"
+
+    # 前复权常数：先用 store 配对作回退基线，再用「该股自身日线 × 行情昨收」
+    # 同日精确配对覆盖（见 qfq_factor 的 docstring：消除混源与时序错位）。
+    kfac = qfq_factor()
+    lq_path = STORE / "last_quotes.csv"
+    try:
+        lq = pd.read_csv(lq_path, dtype={"code": str})
+        ts_max = lq["ts"].astype(str).str.slice(0, 8).max()
+        quote_day = (pd.to_datetime(ts_max, format="%Y%m%d").strftime("%Y-%m-%d")
+                     if ts_max and ts_max != "nan" else "")
+        pre_map = dict(zip(lq["code"], pd.to_numeric(lq["preclose"], errors="coerce")))
+        for c, st in states.items():
+            rec = st.get("recent") or {}
+            cand = [d for d in rec if d < quote_day] if quote_day else []
+            pre = float(pre_map.get(c) or 0)
+            if cand and pre > 0:
+                k = pre / rec[max(cand)]
+                if 1e-4 < k < 1e2:
+                    kfac[c] = k
+    except Exception:  # noqa: BLE001
+        pass
 
     # 本地日线还没更新到的那几天：保留既有事件，不丢数据
     old = _read_json(out, {}) or {}

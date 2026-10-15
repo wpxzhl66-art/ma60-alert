@@ -29,6 +29,69 @@ def _save_state(s: dict):
                              encoding="utf-8")
 
 
+def _verify_exdiv(df: pd.DataFrame) -> pd.DataFrame:
+    """除权除息日防护（v1.11.1）：对触发股逐只核对「昨收」的真实性。
+
+    行情接口的「昨收」在除权除息日返回的是交易所**除权除息参考价**，
+    不是真实昨收。本模块用 ``hfq_last_close / 昨收`` 推复权因子，除权日
+    因子会整体失真——实测 2026-10-14 双汇发展除息，偏离值被抬约 7 个
+    百分点，产生假触发并推送（真实偏离 -4.96%，被记录成 +2.0%）。
+
+    触发股数量少（通常 < 100 只），逐只拉腾讯不复权日线核对昨收；
+    不一致（>0.1%）则用真实昨收重算因子与偏离，并按严格口径重判触发。
+    取不到行情的保持原值——网络故障时不能把全部触发丢掉，那会让
+    预警整体瘫痪（除权日是少数，且断头序列另有 45 天防线兜底）。
+    """
+    if df.empty:
+        return df
+    try:
+        from datasource import TencentSource
+        src = TencentSource(fq="")
+    except Exception:                              # noqa: BLE001
+        print("[scanner] 除权复核数据源不可用，跳过（维持原判定）")
+        return df
+
+    kept = []
+    for code, r in df.iterrows():
+        ts = str(r.get("ts", "") or "")
+        try:
+            qday = pd.to_datetime(ts[:8]) if len(ts) >= 8 else pd.Timestamp(date.today())
+        except Exception:                          # noqa: BLE001
+            qday = pd.Timestamp(date.today())
+        real = None
+        try:
+            dk = src.fetch_daily(code, fq="")
+            dk = dk[dk["date"] < qday]
+            if len(dk):
+                c = float(dk["close"].iloc[-1])
+                real = c if c > 0 else None
+        except Exception:                          # noqa: BLE001
+            real = None
+        if real is None:
+            kept.append(r)                         # 取不到 → 保持原值
+            continue
+        pre = float(r["preclose"])
+        if abs(real - pre) / pre <= 0.001:
+            kept.append(r)                         # 昨收一致，无需修正
+            continue
+        factor = float(r["hfq_last_close"]) / real
+        price_hfq = float(r["price"]) * factor
+        if not (float(r["hfq_last_close"]) < float(r["ma60_prev"]) <= price_hfq):
+            print(f"[scanner] {code} 除权日复核：昨收 {pre} 与真实昨收 {real} 不符，"
+                  f"重算后未触发 → 剔除（原偏离 {float(r['dev_pct'])*100:+.2f}%）")
+            continue
+        r = r.copy()
+        r["factor"] = factor
+        r["price_hfq"] = price_hfq
+        r["dev_pct"] = price_hfq / float(r["ma60_prev"]) - 1.0
+        print(f"[scanner] {code} 除权日修正：昨收 {pre} → 真实 {real}，"
+              f"偏离修正为 {float(r['dev_pct'])*100:+.2f}%")
+        kept.append(r)
+    if not kept:
+        return df.iloc[0:0]
+    return pd.DataFrame(kept, columns=df.columns)
+
+
 def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
              mode: str = "intraday", dedup: bool = True) -> pd.DataFrame:
     """返回当日触发 A 类上穿的股票表。
@@ -59,6 +122,11 @@ def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
     prev_below = df["hfq_last_close"] < df["ma60_prev"]
     now_above = df["price_hfq"] >= df["ma60_prev"]
     df = df[prev_below & now_above].copy()
+
+    # 除权除息日复核（v1.11.1）：行情「昨收」在除权日是除权参考价，
+    # 复权因子会失真（双汇发展 2026-10-14 实例）。演示模式跳过。
+    if mode != "demo":
+        df = _verify_exdiv(df)
 
     # 去重：同日 / 同周（dedup_weekly）
     st = _load_state()
