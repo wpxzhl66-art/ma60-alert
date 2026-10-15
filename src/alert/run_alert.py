@@ -145,6 +145,9 @@ def run_daemon():
 
 
 def run_test():
+    if not pusher.push_enabled():
+        print("推送已停用（config push.enabled=false）→ 自检跳过发送")
+        return
     key_ok = pusher.send(
         "预警系统自检（系统已就绪）",
         "实时预警系统部署自检通过。\n\n"
@@ -305,6 +308,19 @@ def run_notify(sha: str):
     不再依赖本机的 ``data/daily``——本机不在线时由云端产出 dashboard/pattern.json。
     """
     from . import fut_alert, pattern_alert
+
+    # 推送总开关：关闭时直接返回。**不要**在这里 mark_pushed——没发出去就不能记账，
+    # 否则恢复推送后本周的信号会被当成「已推过」而永久漏掉。
+    if not pusher.push_enabled():
+        n = 0
+        if PENDING.exists():
+            try:
+                n = int(json.loads(PENDING.read_text(encoding="utf-8")).get("n") or 0)
+            except Exception:                              # noqa: BLE001
+                n = 0
+        print(f"[notify] 推送已停用（config push.enabled=false）：本轮 A 股新触发 {n} 只，"
+              "只扫描记账、不发送")
+        return
 
     if not PENDING.exists():
         print("[notify] 无 pending，跳过")

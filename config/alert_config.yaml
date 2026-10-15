@@ -14,6 +14,10 @@ events:
   dedup_weekly: true         # 同一股票同一自然周内只推首次
 
 push:
+  # ⚠️ 总开关（v1.10.3）：false = 彻底停止发送推送，扫描/出图/看板/历史台账照常运转。
+  # 2026-10-16 应要求关闭，**在用户明确说「恢复推送」之前不要改回 true**。
+  # 覆盖 A 股、期货、右侧反转形态三个板块（它们共用同一条消息）。
+  enabled: false
   max_stocks_per_msg: 30     # 单条消息最多列出的股票数
   include_backtest: true     # 附回测参照
 

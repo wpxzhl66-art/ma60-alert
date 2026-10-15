@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.10.2';
+  const APP_VERSION = 'v1.10.3';
 
   const S = {
     data: null,        // data.json
@@ -222,6 +222,10 @@
     pill.innerHTML = '<i class="dot"></i><span>' +
       (isToday ? '今日已扫描' + (t.ts ? ' · ' + esc(t.ts.slice(11, 16)) : '')
                : '非交易日 / 未扫描') + '</span>';
+
+    // 推送总开关关闭时给出可见提示，避免把「没收到通知」误当成系统故障
+    const pp = $('pushPill');
+    if (pp) pp.style.display = (d.push && d.push.enabled === false) ? '' : 'none';
 
     // Hero
     const newOnes = rows.filter((r) => r.is_new).length;

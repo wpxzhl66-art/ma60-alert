@@ -85,6 +85,8 @@ a { color: var(--blue); text-decoration: none; }
 }
 .pill.on { background: var(--down-bg); color: var(--down); }
 .pill.off { background: var(--card2); color: var(--text3); }
+/* 推送总开关关闭时的提示（用橙色提示色，刻意不用涨红/跌绿以免误读行情） */
+.pill.mute { background: var(--orange-bg); color: var(--orange); }
 
 .ver {
   font-size: 10px; font-weight: 650; letter-spacing: .3px;

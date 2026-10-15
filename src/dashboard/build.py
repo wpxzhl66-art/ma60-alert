@@ -44,6 +44,19 @@ def _now() -> datetime:
     return datetime.now(CST)
 
 
+def _push_enabled() -> bool:
+    """推送总开关（config/alert_config.yaml 的 ``push.enabled``）。
+
+    只是给界面一个可见提示用的：关掉推送后首页显示「推送已停用」，
+    避免把「没收到通知」误当成系统故障。读不到配置时按「启用」处理。
+    """
+    try:
+        from alert import pusher                              # 延迟导入，离线时不炸
+        return bool(pusher.push_enabled())
+    except Exception:                                         # noqa: BLE001
+        return True
+
+
 def _read_json(p: Path, default=None):
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -528,7 +541,9 @@ def build_data(static_obj: dict | None = None) -> dict:
             "count": len(latest.get("rows", [])),
             "rows": latest.get("rows", []),
         },
-        "push": {"date": push.get("date", ""), "count": int(push.get("count", 0)), "limit": 5},
+        "push": {"date": push.get("date", ""), "count": int(push.get("count", 0)), "limit": 5,
+                 # 总开关：关掉后界面会显示「推送已停用」，避免被误当成系统故障
+                 "enabled": _push_enabled()},
         "trend": trend,
         "health": health,
         "hist": {

@@ -31,6 +31,16 @@ def _bump(n: int = 1):
     _state_path().write_text(json.dumps(s, ensure_ascii=False), encoding="utf-8")
 
 
+def push_enabled() -> bool:
+    """推送总开关（config ``push.enabled``）。
+
+    关掉它只停「发送」，扫描 / 出图 / 看板 / 历史台账都不受影响——
+    它们是 prepare 阶段的事，与推送无关。
+    """
+    cfg = load().get("push") or {}
+    return bool(cfg.get("enabled", True))
+
+
 def remaining_quota() -> int:
     cfg = load()["serverchan"]
     return max(0, int(cfg.get("daily_limit", 5)) - _today_count())
@@ -40,8 +50,12 @@ def send(title: str, desp: str, dry_run: bool | None = None) -> bool:
     """推送一条消息。额度不足返回 False；网络失败重试 3 次。
 
     dry_run=True（或环境变量 ALERT_DRYRUN=1）时只打印不发送，用于链路验证。
+    总开关关闭（push.enabled=false）时直接返回 False，不消耗额度。
     """
     import os
+    if not push_enabled():
+        print(f"[pusher] 推送已停用（push.enabled=false），跳过发送：{title}")
+        return False
     cfg = load()["serverchan"]
     if dry_run is None:
         dry_run = os.environ.get("ALERT_DRYRUN") == "1"
