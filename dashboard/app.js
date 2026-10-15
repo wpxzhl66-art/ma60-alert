@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.14.0';
+  const APP_VERSION = 'v1.15.0';
 
   const S = {
     data: null,        // data.json
@@ -951,9 +951,9 @@
   let kChart = null;
   let kContext = null;
 
-  /* ---------------- AI 五维投资评价（v1.13.0） ----------------
-     模型与 Key 在 ai_config.js 配置（默认 DeepSeek deepseek-chat）。
-     Key 留空 = 只显示引导，其他功能不受影响。
+  /* ---------------- AI 五维投资评价（v1.13.0 引入，v1.15.0 改本地 Key） ----------------
+     Key 不再写在 ai_config.js（仓库公开=泄露）。首次访问弹出配置向导，
+     使用者自选模型+填自己的 Key，测试连通后存 localStorage（wb.ai.cfg）。
      结果按「股票+当天」缓存到 localStorage，同一天反复打开不重复计费。 */
 
   const AI_DIMS = ['消息面', '资金面', '技术面', '股价安全边际', '行业风险'];
@@ -964,9 +964,16 @@
     risk:     { text: '需警惕', color: 'var(--orange)' },
   };
 
+  const AI_LS_KEY = 'wb.ai.cfg';
+
+  function aiCfg() {
+    try { return JSON.parse(localStorage.getItem(AI_LS_KEY) || 'null'); }
+    catch (e) { return null; }
+  }
+
   function aiCfgOk() {
-    const c = window.AI_CFG || {};
-    return !!(c.apiKey && c.baseUrl && c.model);
+    const c = aiCfg();
+    return !!(c && c.apiKey && c.baseUrl && c.model);
   }
 
   function aiCacheKey(code) { return 'wb.ai.' + code; }
@@ -1002,7 +1009,7 @@
   }
 
   async function aiCall(ctx) {
-    const cfg = window.AI_CFG;
+    const cfg = aiCfg();
     const sys =
       '你是严谨的 A 股投资分析助手。用户会给你一只股票的客观指标，' +
       '请从五个维度给出简短评价：' + AI_DIMS.join('、') + '。' +
@@ -1056,7 +1063,7 @@
       '<br/>AI 生成，仅供参考，不构成投资建议 · ' +
       (code ? '<span class="code">' + esc(code.replace('.', '')) + '</span> · ' : '') +
       '结果当天缓存，不重复调用';
-    $('aiHint').textContent = '模型 ' + ((window.AI_CFG || {}).model || '—');
+    $('aiHint').textContent = '模型 ' + ((aiCfg() || {}).model || '—');
   }
 
   function aiIdle(code) {
@@ -1064,9 +1071,8 @@
     $('aiHint').textContent = '消息面 · 资金面 · 技术面 · 安全边际 · 行业';
     if (!aiCfgOk()) {
       $('aiSummary').innerHTML =
-        'AI 评价还没有配置 API Key：打开 <span class="code">ai_config.js</span>，' +
-        '把 Key 填进 <span class="code">apiKey</span> 的引号里即可启用' +
-        '（默认用 DeepSeek，也支持智谱/月之暗面/通义等 OpenAI 兼容接口）。';
+        'AI 评价还没配置：点右上「AI 设置」选模型、填你自己的 API Key' +
+        '（只保存在本机浏览器，本站服务器不经手）。';
       return;
     }
     $('aiSummary').innerHTML = '';
@@ -1092,9 +1098,104 @@
       $('aiDims').innerHTML = '';
       $('aiSummary').innerHTML =
         '<b style="color:var(--orange)">生成失败</b>：' + esc(String(e.message || e)) +
-        '<br/>请检查 ai_config.js 里的 Key 与网络；部分厂商不支持浏览器直连时会有 CORS 报错，' +
+        '<br/>可在「AI 设置」里检查 Key / 换模型；部分厂商不允许浏览器直连（CORS 报错），' +
         '换支持的厂商或加中转即可。';
     }
+  }
+
+  /* ---------------- AI 配置向导（v1.15.0） ----------------
+     首次访问（localStorage 里没有有效配置）强制弹出；测试连通通过才放行。
+     已配置过的使用者可从 AI 卡右上「AI 设置」再次打开修改。 */
+  function aiGatePresetChange() {
+    const p = (window.AI_CFG.presets || [])
+      .find((x) => x.id === $('aiGatePreset').value);
+    const isCustom = !p || p.id === 'custom';
+    $('aiGateCustom').style.display = isCustom ? '' : 'none';
+    if (p && !isCustom) {
+      $('aiGateUrl').value = p.baseUrl;
+      $('aiGateModel').value = p.model;
+    }
+  }
+
+  function aiGateInit(force) {
+    const mask = $('aiGateMask');
+    if (!mask) return;
+    const sel = $('aiGatePreset');
+    if (!sel.options.length) {
+      (window.AI_CFG.presets || []).forEach((p) => {
+        const o = document.createElement('option');
+        o.value = p.id; o.textContent = p.name;
+        sel.appendChild(o);
+      });
+    }
+    const c = aiCfg();
+    if (c) {
+      sel.value = c.presetId || 'custom';
+      $('aiGateUrl').value = c.baseUrl || '';
+      $('aiGateModel').value = c.model || '';
+      $('aiGateKey').value = c.apiKey || '';
+    }
+    const first = !aiCfgOk();
+    $('aiGateClose').style.display = first ? 'none' : '';
+    mask.dataset.dismissable = first ? '0' : '1';
+    sel.onchange = aiGatePresetChange;
+    aiGatePresetChange();     // 按当前选中项预填 baseUrl/model
+    if (first || force) mask.classList.add('show');   // 只拦未配置者；「AI 设置」强制打开
+  }
+
+  async function aiGateTest() {
+    const msg = $('aiGateMsg');
+    const p = (window.AI_CFG.presets || [])
+      .find((x) => x.id === $('aiGatePreset').value);
+    const baseUrl = ($('aiGateUrl').value || '').trim();
+    const model = ($('aiGateModel').value || '').trim();
+    const apiKey = ($('aiGateKey').value || '').trim();
+    if (!baseUrl || !model || !apiKey) {
+      msg.innerHTML = '<span style="color:var(--orange)">请先填完整：模型、接口地址、API Key。</span>';
+      return;
+    }
+    msg.textContent = '正在测试连通…';
+    $('aiGateTest').disabled = true;
+    try {
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: '请只回复两个字：连通' }],
+          max_tokens: 16, stream: false,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('接口返回 ' + res.status +
+          '（常见原因：Key 无效 / 余额不足 / 模型名不对）');
+      }
+      const j = await res.json();
+      if (!j.choices || !j.choices.length) throw new Error('返回不像 chat/completions 格式');
+      localStorage.setItem(AI_LS_KEY, JSON.stringify({
+        presetId: p ? p.id : 'custom', baseUrl: baseUrl, model: model,
+        apiKey: apiKey, okDay: new Date().toISOString().slice(0, 10),
+      }));
+      msg.innerHTML = '<span style="color:var(--up)"><b>✅ 连通成功</b>，配置已保存在本浏览器。</span>';
+      setTimeout(() => { $('aiGateMask').classList.remove('show'); }, 450);
+    } catch (e) {
+      msg.innerHTML = '<span style="color:var(--down)"><b>❌ 连通失败</b>：' + esc(String(e.message || e)) +
+        '<br/>请检查 Key 是否有效、接口地址、模型名；浏览器控制台若见 CORS 报错，' +
+        '说明该厂商不允许网页直连，换 DeepSeek/智谱等支持的厂商。</span>';
+    }
+    $('aiGateTest').disabled = false;
+  }
+
+  function aiGateBind() {
+    const mask = $('aiGateMask');
+    if (!mask) return;
+    $('aiGateTest').addEventListener('click', aiGateTest);
+    $('aiGateClose').addEventListener('click', () => mask.classList.remove('show'));
+    mask.addEventListener('click', (e) => {
+      if (e.target === mask && mask.dataset.dismissable === '1') mask.classList.remove('show');
+    });
+    const setBtn = $('aiSetBtn');
+    if (setBtn) setBtn.addEventListener('click', () => aiGateInit(true));
   }
 
   function renderAiIntro() {
@@ -1236,6 +1337,8 @@
 
   /* ------------------------------------------------ 启动 */
   async function boot() {
+    aiGateInit();      // v1.15.0：未配置 AI 时先弹配置向导（盖住整页，测通才能操作）
+    aiGateBind();
     bindTabs();
     bindSheets();
     const vb = $('verBadge');

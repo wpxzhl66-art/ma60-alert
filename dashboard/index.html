@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.14.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.15.0</span>
   </div>
 </header>
 
@@ -326,8 +326,9 @@
       <div class="card" id="aiCard" style="margin-top:12px">
         <div class="card-head">
           <h2>AI 五维评价</h2>
-          <div class="hint" id="aiHint">消息面 · 资金面 · 技术面 · 安全边际 · 行业</div>
+          <span class="btn sec sm" id="aiSetBtn" style="cursor:pointer;padding:4px 10px">AI 设置</span>
         </div>
+        <div class="hint" id="aiHint" style="padding:0 16px">消息面 · 资金面 · 技术面 · 安全边际 · 行业</div>
         <div class="list" id="aiDims"></div>
         <div class="note" id="aiSummary"></div>
       </div>
@@ -337,6 +338,44 @@
         <button class="btn sell" id="chartSell">卖出</button>
       </div>
       <div class="note" style="padding:12px 0 0" id="chartNote"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== AI 配置向导（v1.15.0 首次访问弹窗） ==================== -->
+<div class="sheet-mask" id="aiGateMask" style="z-index:200">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="aiGateTitle">欢迎使用 · 先配置 AI 评价</h3>
+      <span class="x" id="aiGateClose" style="display:none">✕</span>
+    </div>
+    <div class="pad">
+      <div class="plain" style="margin-bottom:12px">
+        本站的「AI 五维评价」需要调用大模型。选一个模型、填上<b>你自己的 API Key</b>，
+        测试连通后即可使用。<b>Key 只保存在你自己的浏览器里</b>，本站服务器不经手。
+      </div>
+      <div class="field">
+        <label>选模型</label>
+        <select id="aiGatePreset"></select>
+      </div>
+      <div class="field" id="aiGateCustom" style="display:none">
+        <label>接口地址（/chat/completions 完整 URL）</label>
+        <input id="aiGateUrl" placeholder="https://…/v1/chat/completions" autocomplete="off">
+        <label style="margin-top:10px">模型名</label>
+        <input id="aiGateModel" placeholder="例如 gpt-4o-mini" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input id="aiGateKey" type="password" placeholder="sk-…" autocomplete="off">
+      </div>
+      <div class="card" style="margin:4px 0 14px">
+        <div class="card-body" id="aiGateMsg" style="padding:12px 14px">还没测试。</div>
+      </div>
+      <button class="btn block" id="aiGateTest">测试连通并进入</button>
+      <div class="note" style="padding:10px 0 0">
+        还没有 Key？DeepSeek 充几块钱能用很久：
+        <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a>
+      </div>
     </div>
   </div>
 </div>

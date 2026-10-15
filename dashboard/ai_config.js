@@ -1,24 +1,25 @@
 /* ============================================================
-   AI 五维投资评价 · 配置（v1.13.1 已填入 Key）
+   AI 五维投资评价 · 模型目录（v1.15.0）
    ------------------------------------------------------------
-   模型选型（我定的）：DeepSeek deepseek-chat
-     —— OpenAI 兼容接口、中文财经语料理解好、按量计费便宜
-        （评价一只股票约 1 千字输出，成本不到 1 分钱）。
+   ⚠️ v1.15.0 起 Key 不再写进本文件（仓库公开，写进来等于泄露）。
+   流程改为：首次访问看板弹出「AI 配置向导」→ 使用者自己选模型、
+   填自己的 Key → 点「测试连通」通过后，保存在**他自己浏览器**
+   的 localStorage（键 wb.ai.cfg），本站服务器不经手、不存档。
 
-   想换其他厂商？只要是「OpenAI 兼容的 /chat/completions」都行，
-   改 baseUrl + model 两个值即可，例如：
-     智谱 GLM:  baseUrl 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
-                model   'glm-4-flash'
-     月之暗面:  baseUrl 'https://api.moonshot.cn/v1/chat/completions'
-                model   'moonshot-v1-8k'
-     通义千问:  baseUrl 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-                model   'qwen-plus'
-
-   ⚠️ apiKey 留空 = 功能显示「未配置」，其他功能完全不受影响。
-      申请地址（DeepSeek）：https://platform.deepseek.com
+   下面只是「可选模型清单」，都是 OpenAI 兼容的 /chat/completions。
+   想加厂商，往 presets 里添一行即可（id/name/baseUrl/model）。
    ============================================================ */
 window.AI_CFG = {
-  baseUrl: 'https://api.deepseek.com/chat/completions',
-  model: 'deepseek-chat',
-  apiKey: 'sk-f1a4057ec6da401f9d1c95420213e7bf',   // 2026-10-16 填入（DeepSeek 测试 Key）
+  presets: [
+    { id: 'deepseek', name: 'DeepSeek（推荐 · 便宜）',
+      baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat' },
+    { id: 'zhipu', name: '智谱 GLM',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', model: 'glm-4-flash' },
+    { id: 'moonshot', name: '月之暗面 Kimi',
+      baseUrl: 'https://api.moonshot.cn/v1/chat/completions', model: 'moonshot-v1-8k' },
+    { id: 'qwen', name: '通义千问',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+    { id: 'custom', name: '自定义（任何 OpenAI 兼容接口）',
+      baseUrl: '', model: '' },
+  ],
 };
