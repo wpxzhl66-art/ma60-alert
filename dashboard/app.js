@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.12.1';
+  const APP_VERSION = 'v1.13.0';
 
   const S = {
     data: null,        // data.json
@@ -337,8 +337,6 @@
     const devCls = r.dev_pct > 0 ? 'up' : 'down';
     const lv = riskLevel(r);
     const lvTag = lv ? ' <span class="lv ' + lv.cls + '">' + lv.text + '</span>' : '';
-    const lvWhy = lv
-      ? '<div class="t3" style="color:' + lv.color + '">' + esc(lv.why) + '</div>' : '';
     row.innerHTML =
       '<div class="idx">' + (i + 1) + '</div>' +
       '<div class="grow">' +
@@ -349,13 +347,13 @@
           '<span class="' + devCls + '">偏离 ' + pct(r.dev_pct, 2) + '</span>' +
           extraSpan(S.sort.trig.id, r) +
         '</div>' +
-        lvWhy +
       '</div>' +
       '<div class="r">' +
         '<div class="p">' + num(r.price, 2) + '</div>' +
         '<div class="s ' + cls(r.chg_pct) + '">' + pct(r.chg_pct, 2) + '</div>' +
       '</div>';
-    row.addEventListener('click', () => openKline(r.code, r.name));
+    // v1.13.0：把整行数据带给弹层，AI 五维评价要用
+    row.addEventListener('click', () => openKline(r.code, r.name, r));
     return row;
   }
 
@@ -567,6 +565,8 @@
         '<div class="empty">该品种周线数据缺失<br>（历史合约不足 61 周）</div>';
       return;
     }
+    kContext.ctx = r;                                 // 喂给 AI 五维评价
+    renderAiIntro();
     renderFutKline(r);
     renderFutStats(r);
   }
@@ -659,7 +659,7 @@
         '<div class="p">' + num(r.price, 2) + '</div>' +
         '<div class="s ' + cls(r.chg) + '">' + pct(r.chg, 2) + '</div>' +
       '</div>';
-    row.addEventListener('click', () => openKline(r.code, r.name));
+    row.addEventListener('click', () => openKline(r.code, r.name, r));
     return row;
   }
 
@@ -951,15 +951,177 @@
   let kChart = null;
   let kContext = null;
 
+  /* ---------------- AI 五维投资评价（v1.13.0） ----------------
+     模型与 Key 在 ai_config.js 配置（默认 DeepSeek deepseek-chat）。
+     Key 留空 = 只显示引导，其他功能不受影响。
+     结果按「股票+当天」缓存到 localStorage，同一天反复打开不重复计费。 */
+
+  const AI_DIMS = ['消息面', '资金面', '技术面', '股价安全边际', '行业风险'];
+  const AI_LEVEL = {
+    positive: { text: '偏利好', color: 'var(--up)' },      // A 股惯例：利好红
+    neutral:  { text: '中性',   color: 'var(--text3)' },
+    negative: { text: '偏利空', color: 'var(--down)' },    // 利空绿
+    risk:     { text: '需警惕', color: 'var(--orange)' },
+  };
+
+  function aiCfgOk() {
+    const c = window.AI_CFG || {};
+    return !!(c.apiKey && c.baseUrl && c.model);
+  }
+
+  function aiCacheKey(code) { return 'wb.ai.' + code; }
+
+  /** 把行数据浓缩成给模型的客观事实清单（只给系统里算出来的数，不编造）。
+     三种行结构字段名不同：今天页 chg_pct/amt_ratio、形态页 chg/vol、
+     期货 price/dev_pct(小数)/sector —— 在这里统一。 */
+  function aiFacts(ctx) {
+    if (!ctx) return '（暂无系统指标，请基于常识与该股票公开信息谨慎作答，不确定的维度标 neutral）';
+    const isFut = !!ctx.sector;
+    const chg = ctx.chg_pct != null ? ctx.chg_pct : ctx.chg;
+    const vol = ctx.amt_ratio != null ? ctx.amt_ratio : ctx.vol;
+    const dev = ctx.dev_pct != null ? (isFut ? ctx.dev_pct * 100 : ctx.dev_pct) : null;
+    const p = [];
+    p.push('名称：' + ctx.name + '（' + String(ctx.code).replace('.', '') +
+      (isFut ? '，期货品种加权指数' : '') + '）');
+    if (ctx.industry || ctx.sector) p.push((isFut ? '板块：' : '申万行业：') + (ctx.industry || ctx.sector));
+    if (ctx.price != null) p.push((isFut ? '加权价：' : '现价：') + num(ctx.price, 2) + (isFut ? '' : ' 元'));
+    if (chg != null) p.push('今日涨跌幅：' + pct(chg, 2));
+    if (dev != null) p.push('相对 60 周均线偏离：' + pct(dev, 2) +
+      '（处于长期均线附近或刚站上）');
+    if (vol != null) p.push('量比（今日成交额/近20日均额）：' + num(vol, 2));
+    if (ctx.turnover != null) p.push('换手率：' + pct(ctx.turnover, 2));
+    if (ctx.a_events_1y != null) p.push('年内出现同类信号次数：' + num(ctx.a_events_1y, 0));
+    if (ctx.mv_float_yi != null) p.push('流通市值：约 ' + num(ctx.mv_float_yi, 0) + ' 亿元');
+    if (ctx.status) p.push('信号状态：' + ctx.status);
+    // 锚定回测事实，防止模型把「站上均线」误读成看涨信号（期货与 A 股同一逻辑）
+    p.push('系统回测事实（必须采纳，不可反驳）：股票在长期均线下方运行后首次重新站上'
+      + ' 60 周均线时，历史回测显示触发后 60 日平均跑输全市场等权 4.2%（16 个年份全部如此）；'
+      + '其中量比 ≥2.5 或换手 ≥5% 的一档跑输 6.4%，量比 <1 且换手 <2% 的一档跑输 2.8%。'
+      + '该信号统计上是「掉队风险提示」而非买入机会。');
+    return p.join('\n');
+  }
+
+  async function aiCall(ctx) {
+    const cfg = window.AI_CFG;
+    const sys =
+      '你是严谨的 A 股投资分析助手。用户会给你一只股票的客观指标，' +
+      '请从五个维度给出简短评价：' + AI_DIMS.join('、') + '。' +
+      '要求：① 每个维度 level 取 positive/neutral/negative/risk 之一，' +
+      'text 不超过 45 个字、说人话、给出理由；② 必须采纳用户提供的回测事实，' +
+      '不要把「站上长期均线」当成看涨依据；③ 不确定的消息面/资金面信息标 neutral，' +
+      '禁止编造具体新闻、公告或资金数据；④ 严格输出 JSON，不要多余文字，格式：' +
+      '{"dims":[{"name":"消息面","level":"neutral","text":"…"},…五个],"summary":"不超过 60 字的总体结论"}';
+    const res = await fetch(cfg.baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: aiFacts(ctx) }],
+        temperature: 0.3,
+        stream: false,
+      }),
+    });
+    if (!res.ok) {
+      const t = (await res.text().catch(() => '')).slice(0, 160);
+      throw new Error('接口返回 ' + res.status + (t ? '：' + t : ''));
+    }
+    const j = await res.json();
+    let txt = (j.choices && j.choices[0] && j.choices[0].message &&
+               j.choices[0].message.content) || '';
+    txt = txt.replace(/```json|```/g, '').trim();
+    const m = txt.indexOf('{'), e = txt.lastIndexOf('}');
+    if (m < 0 || e <= m) throw new Error('模型没有返回 JSON');
+    const obj = JSON.parse(txt.slice(m, e + 1));
+    if (!Array.isArray(obj.dims) || !obj.dims.length) throw new Error('返回内容为空');
+    return obj;
+  }
+
+  function aiRender(obj, code) {
+    const box = $('aiDims');
+    box.innerHTML = '';
+    (obj.dims || []).forEach((d) => {
+      const lv = AI_LEVEL[d.level] || AI_LEVEL.neutral;
+      const row = el('div', 'row');
+      row.innerHTML =
+        '<div class="grow">' +
+          '<div class="t1"><span style="color:' + lv.color + ';font-weight:650">' +
+            esc(d.name || '') + '</span>' +
+            ' <span class="tag" style="color:' + lv.color + '">' + lv.text + '</span></div>' +
+          '<div class="t2" style="white-space:normal">' + esc(d.text || '') + '</div>' +
+        '</div>';
+      box.appendChild(row);
+    });
+    $('aiSummary').innerHTML =
+      '<b>一句话总结</b>：' + esc(obj.summary || '—') +
+      '<br/>AI 生成，仅供参考，不构成投资建议 · ' +
+      (code ? '<span class="code">' + esc(code.replace('.', '')) + '</span> · ' : '') +
+      '结果当天缓存，不重复调用';
+    $('aiHint').textContent = '模型 ' + ((window.AI_CFG || {}).model || '—');
+  }
+
+  function aiIdle(code) {
+    $('aiDims').innerHTML = '';
+    $('aiHint').textContent = '消息面 · 资金面 · 技术面 · 安全边际 · 行业';
+    if (!aiCfgOk()) {
+      $('aiSummary').innerHTML =
+        'AI 评价还没有配置 API Key：打开 <span class="code">ai_config.js</span>，' +
+        '把 Key 填进 <span class="code">apiKey</span> 的引号里即可启用' +
+        '（默认用 DeepSeek，也支持智谱/月之暗面/通义等 OpenAI 兼容接口）。';
+      return;
+    }
+    $('aiSummary').innerHTML = '';
+    const btn = el('button', 'btn sec block');
+    btn.textContent = '生成 AI 五维评价';
+    btn.addEventListener('click', () => aiRun(code));
+    $('aiDims').appendChild(btn);
+  }
+
+  async function aiRun(code) {
+    const ctx = kContext && kContext.ctx;
+    $('aiDims').innerHTML =
+      '<div class="loading"><span class="spinner"></span> AI 正在从五个维度分析…（约 5~15 秒）</div>';
+    $('aiSummary').textContent = '';
+    try {
+      const obj = await aiCall(ctx);
+      aiRender(obj, code);
+      try {
+        localStorage.setItem(aiCacheKey(code),
+          JSON.stringify({ day: (S.today || '').slice(0, 10) || new Date().toISOString().slice(0, 10), obj: obj }));
+      } catch (_) { /* 隐私模式下存不了就算了 */ }
+    } catch (e) {
+      $('aiDims').innerHTML = '';
+      $('aiSummary').innerHTML =
+        '<b style="color:var(--orange)">生成失败</b>：' + esc(String(e.message || e)) +
+        '<br/>请检查 ai_config.js 里的 Key 与网络；部分厂商不支持浏览器直连时会有 CORS 报错，' +
+        '换支持的厂商或加中转即可。';
+    }
+  }
+
+  function renderAiIntro() {
+    const code = kContext && kContext.code;
+    if (!code) return;
+    let cached = null;
+    try {
+      cached = JSON.parse(localStorage.getItem(aiCacheKey(code)) || 'null');
+    } catch (_) { /* ignore */ }
+    const today = new Date().toISOString().slice(0, 10);
+    if (cached && cached.obj && cached.day === today) {
+      aiRender(cached.obj, code);          // 当天已生成过，直接展示（不再计费）
+    } else {
+      aiIdle(code);
+    }
+  }
+
   /* 周线图公共配置（weeklyChartOption）与 ma() 已移入 core.js */
 
-  async function openKline(code, name) {
-    kContext = { code: code, name: name, kind: 'stock' };
+  async function openKline(code, name, ctx) {
+    kContext = { code: code, name: name, kind: 'stock', ctx: ctx || null };
     $('chartTitle').textContent = name + ' · 周线图';
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = '';
     $('chartSell').style.display = '';
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
+    renderAiIntro();                                  // AI 评价区先就位（缓存命中则直接出结果）
     const series = await fetchWeeklyOne(code).catch(() => null);
     if (!series || !series.length) {
       $('kChart').innerHTML =

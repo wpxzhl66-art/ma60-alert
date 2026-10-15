@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.12.1</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.13.0</span>
   </div>
 </header>
 
@@ -324,6 +324,17 @@
       <div class="card">
         <div class="metrics c3" id="chartStats"></div>
       </div>
+
+      <!-- AI 五维投资评价（v1.13.0）：Key 在 ai_config.js 里填，留空则显示引导 -->
+      <div class="card" id="aiCard" style="margin-top:12px">
+        <div class="card-head">
+          <h2>AI 五维评价</h2>
+          <div class="hint" id="aiHint">消息面 · 资金面 · 技术面 · 安全边际 · 行业</div>
+        </div>
+        <div class="list" id="aiDims"></div>
+        <div class="note" id="aiSummary"></div>
+      </div>
+
       <div class="btn-row" style="margin-top:12px">
         <button class="btn buy" id="chartBuy">买入</button>
         <button class="btn sell" id="chartSell">卖出</button>
@@ -338,6 +349,7 @@
 <script src="./vendor/echarts.min.js"
         onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="ai_config.js"></script>
 <script src="core.js"></script>
 <script src="app.js"></script>
 <script src="account.js"></script>
