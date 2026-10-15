@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
+import pandas as pd
 
 from .config import load
 
@@ -46,7 +46,12 @@ def _backtest_ref() -> str:
 
 
 def build_message(trig, mode: str, chart_urls: dict | None = None) -> tuple[str, str]:
-    """trig: scanner.evaluate() 输出；chart_urls: code -> 周K图公网URL。"""
+    """trig: scanner.evaluate() 输出；chart_urls: code -> 周K图公网URL。
+
+    云端在 A 股无新触发时传入 None，此处按空表处理。
+    """
+    if trig is None:
+        trig = pd.DataFrame()
     tag = "盘中预警" if mode == "intraday" else "收盘确认"
     n = len(trig)
     lines = []
