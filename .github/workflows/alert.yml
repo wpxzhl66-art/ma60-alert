@@ -16,6 +16,10 @@ on:
       task:
         description: "任务：scan | confirm | update | demo"
         default: "demo"
+      force:
+        description: "跳过槽位闸门（手动补跑用；外部定时服务不要设）"
+        type: boolean
+        default: false
 
 concurrency:
   group: ma60-alert
@@ -38,9 +42,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 槽位闸门（定时触发时收敛到目标扫描时点）
+      - name: 槽位闸门（收敛到目标扫描时点，多调度源去重）
         id: gate
-        if: github.event_name == 'schedule' && github.event.schedule != '7 8 * * 1-5'
+        # 外部定时服务（cron-job.org 等）走的是 workflow_dispatch，也必须过闸门：
+        # 它可能与本机定时任务在同一分钟触发，不去重就会重复扫描两遍。
+        # 闸门本身幂等（每个槽位每天只放行一次，谁先到谁跑），多一个调度源无害。
+        # 手动补跑用 -f task=scan -f force=true 绕过闸门。
+        if: >-
+          github.event.inputs.force != 'true' &&
+          ((github.event_name == 'schedule' && github.event.schedule != '7 8 * * 1-5') ||
+           github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
         run: python3 .github/scripts/slot_gate.py
 
       - uses: actions/setup-python@v5
