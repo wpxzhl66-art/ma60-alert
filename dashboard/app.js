@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.12.0';
+  const APP_VERSION = 'v1.12.1';
 
   const S = {
     data: null,        // data.json

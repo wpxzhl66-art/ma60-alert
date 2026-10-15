@@ -470,3 +470,44 @@ body.page-history { padding-bottom: 30px; }
   .topbar .wrap { flex-wrap: wrap; row-gap: 8px; }
   .topbar .brand { flex: 0 0 100%; }
 }
+
+/* ============================================================
+   v1.12.1 · 桌面端导航移到左侧（≥900px）
+   窄屏（手机/平板竖屏）保持底部导航不变 —— 移动端拇指操作最顺手。
+   body.has-side 只加在带导航的 index.html 上，
+   history.html 无侧栏，不受影响。
+   ============================================================ */
+@media (min-width: 900px) {
+  body.has-side {
+    padding-left: 168px;          /* 内容区整体右移，.wrap 在剩余空间内居中 */
+    padding-bottom: 40px;         /* 底部导航没了，不再需要给它留白 */
+  }
+  .tabbar {
+    top: 0; bottom: 0; right: auto;
+    width: 168px;
+    border-top: none;
+    border-right: .5px solid var(--sep);
+    padding-bottom: 0;
+  }
+  .tabbar .inner {
+    max-width: none;
+    flex-direction: column;
+    padding: 16px 10px;
+    gap: 3px;
+  }
+  .tabbar button {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 13px;
+    border-radius: 11px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text2);
+    transition: background .15s ease;
+  }
+  .tabbar button:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .tabbar button.on { background: var(--blue-bg); color: var(--blue); }
+  .tabbar .ico { font-size: 19px; }
+}
