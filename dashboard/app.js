@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.10.3';
+  const APP_VERSION = 'v1.11.0';
 
   const S = {
     data: null,        // data.json
@@ -164,10 +164,10 @@
     const left = mins >= 60
       ? Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分钟后'
       : mins + ' 分钟后';
-    return '<div class="metric hero"><div class="k">下一次扫描（GitHub 定时 · 交易日）</div>' +
+    return '<div class="metric hero"><div class="k">下一次自动检查（交易日）</div>' +
       '<div class="v">' + esc(dayWord + ' ' + ns.hm) + '</div>' +
       '<div class="x">' + esc(ns.label) + ' · ' + esc(left) +
-      ' · 定时可能有数分钟延迟，节假日自动跳过</div></div>';
+      ' · 到点自动跑，周末和节假日跳过</div></div>';
   }
 
   /** 首页「形态」入口卡：本机或云端扫过才有数据，缺失时整卡隐藏 */
@@ -179,10 +179,11 @@
     const stale = S.data && S.data.today && p.day !== S.data.today;
     card.style.display = '';
     box.innerHTML =
-      '<div class="t"><div>右侧反转形态 · 今日启动 ' + (c.A || 0) + ' 只</div>' +
-      '<div class="s">' + esc(p.day) + ' · 洗盘观察 ' + (c.B || 0) + ' · 新突破 ' +
-        (c.C || 0) + (stale ? ' · 非今日扫描' : '') + ' · 追涨风险提示</div></div>' +
-      '<button class="btn sec sm" id="patGo">查看形态</button>';
+      '<div class="t"><div>今天突然大涨的股票 · 今日启动 ' + (c.A || 0) + ' 只</div>' +
+      '<div class="s">' + esc(p.day) + ' · 涨完跌下来 ' + (c.B || 0) + ' 只 · 刚创新高 ' +
+        (c.C || 0) + ' 只' + (stale ? ' · 这不是今天扫的' : '') +
+        ' · 追涨风险提示（不是买入推荐）</div></div>' +
+      '<button class="btn sec sm" id="patGo">去看看</button>';
     const go = $('patGo');
     if (go) {
       go.addEventListener('click', () => {
@@ -207,41 +208,75 @@
         const span = String(h.start || '').slice(5) + ' ~ ' + String(h.end || '').slice(5);
         const pctAbove = h.stocks ? Math.round(h.above_now / h.stocks * 100) : 0;
         $('histBox').innerHTML =
-          '<div class="t"><div>近一月触发 ' + h.events + ' 次 · ' + h.stocks + ' 只</div>' +
-          '<div class="s">' + span + ' · 当前仍站上 60 周线的占 ' + pctAbove + '%</div></div>' +
-          '<a class="btn sec sm" href="./history.html">查看历史</a>';
+          '<div class="t"><div>最近一个月被扫出 ' + h.events + ' 次 · 涉及 ' + h.stocks + ' 只</div>' +
+          '<div class="s">' + span + ' · 现在还有 ' + pctAbove + '% 站在长期平均价上方</div></div>' +
+          '<a class="btn sec sm" href="./history.html">看明细</a>';
       } else hc.style.display = 'none';
     }
 
-    $('subTitle').textContent = '数据 ' + (d.health && d.health.last_update ? d.health.last_update : '—') +
-      ' · ' + (t.day || '—');
+    $('subTitle').textContent = '帮你看住股票 · 数据 ' +
+      (d.health && d.health.last_update ? d.health.last_update : '—');
 
     const pill = $('dayPill');
     const isToday = t.day === today;
     pill.className = 'pill ' + (isToday ? 'on' : 'off');
     pill.innerHTML = '<i class="dot"></i><span>' +
-      (isToday ? '今日已扫描' + (t.ts ? ' · ' + esc(t.ts.slice(11, 16)) : '')
-               : '非交易日 / 未扫描') + '</span>';
+      (isToday ? '今天已查过' + (t.ts ? ' · ' + esc(t.ts.slice(11, 16)) : '')
+               : '今天还没查') + '</span>';
 
     // 推送总开关关闭时给出可见提示，避免把「没收到通知」误当成系统故障
     const pp = $('pushPill');
     if (pp) pp.style.display = (d.push && d.push.enabled === false) ? '' : 'none';
 
-    // Hero
-    const newOnes = rows.filter((r) => r.is_new).length;
+    // Hero —— 第一眼就回答「今天要不要紧张」，术语收进可折叠说明
     const modeLabel = t.mode_label || '扫描';
     const ts = t.ts || '';
+    const hotN = rows.filter((r) => riskLevel(r)).length;
+    const n = rows.length;
     $('todayHero').innerHTML =
-      '<div class="metrics c2">' +
-        '<div class="metric hero"><div class="k">当日触及 60 周线（掉队风险）</div>' +
-          '<div class="v">' + rows.length + ' <span style="font-size:15px;font-weight:600">只</span></div>' +
-          '<div class="x">' + esc(t.day || '—') + ' · ' + esc(modeLabel) + ' · 快照 ' + (t.scanned || 0) + ' 只</div>' +
+      '<div class="status ' + (n ? 'warn' : 'ok') + '">' +
+        '<div class="emoji">' + (n ? '⚠️' : '✅') + '</div>' +
+        '<div class="body">' +
+          '<div class="title">' + (n ? '今天有 ' + n + ' 只股票要留意' : '今天没有要提醒的股票') + '</div>' +
+          '<div class="desc">' + (n
+            ? '它们之前跌了很久，最近刚爬回到<b>长期平均价</b>附近。历史上这种股票，' +
+              '接下来半年平均比大盘差 <b>4.2%</b>。'
+            : '全部 ' + (t.scanned || 0) + ' 只股票都逐个查过了，没有一只出现这种情况，' +
+              '不用做任何操作。') + '</div>' +
         '</div>' +
-        '<div class="metric"><div class="k">本次新触发</div><div class="v sm">' + newOnes + ' 只</div>' +
-          '<div class="x">其余今日已推送过</div></div>' +
-        '<div class="metric"><div class="k">扫描时间</div><div class="v sm">' +
-          esc(ts ? ts.slice(5, 16).replace('T', ' ') : '—') + '</div><div class="x">' + timeAgo(t.ts) + '</div></div>' +
+      '</div>' +
+      '<details class="help"><summary>这是什么意思？我该做什么？</summary>' +
+        '<div class="help-body">' +
+          '<span class="q"><b>「长期平均价」是什么？</b>' +
+            '把这只股票过去 60 周每周的收盘价加起来除以 60，就是它的长期平均价（也叫 60 周均线）。' +
+            '价格在这条线上方，说明近期还算强；跌到下方，就说明走弱了。</span>' +
+          '<span class="q"><b>为什么这些股票要留意？</b>' +
+            '它们跌了很久，现在只是「爬回来喘口气」，并不代表已经走强。' +
+            '过去 14 年里有 5.3 万次同样的情况，之后半年平均比大盘差 4.2%，16 个年份没有一个例外。</span>' +
+          '<span class="q"><b>我该做什么？</b>' +
+            '手里有这个股票 → 可以考虑减一点；手里没有 → <b>不要因为这个就买入</b>。' +
+            '这是「风险提醒」，不是「买入推荐」。</span>' +
+          '<span class="q"><b>下面那些数字怎么看？</b>' +
+            '「偏离 1.2%」＝现在价格比长期平均价高 1.2%；' +
+            '「量比 2.0」＝今天的成交额是最近 20 天平均的 2 倍；' +
+            '「涨跌幅」＝今天比昨天涨跌了多少。</span>' +
+        '</div>' +
+      '</details>' +
+      '<div class="metrics c2">' +
         nextScanMetric() +
+        (n ? '<div class="metric"><div class="k">里面最需要小心的</div>' +
+          '<div class="v sm">' + hotN + ' 只</div>' +
+          '<div class="x">涨得猛、成交还大，历史上表现最差</div></div>' : '') +
+        '<div class="metric"><div class="k">今天一共查了</div><div class="v sm">' +
+          (t.scanned || 0) + ' 只</div><div class="x">全部 A 股，一只不落</div></div>' +
+        '<div class="metric"><div class="k">最近一次结果</div><div class="v sm">' +
+          esc(t.day || '—') + '</div><div class="x">' + esc(modeLabel) + ' · ' +
+          esc(ts ? ts.slice(11, 16) : '') + ' · ' + timeAgo(t.ts) + '</div></div>' +
+      '</div>' +
+      '<div class="howto">' +
+        '<div class="s"><i>1</i><span>先看<b>上面那句总结</b>——今天要不要紧张，一句话说完。</span></div>' +
+        '<div class="s"><i>2</i><span>要紧张就往下翻，<b>点一下股票名字</b>就能看它的周线图。</span></div>' +
+        '<div class="s"><i>3</i><span>手里有名单里的股票，去「我的」里<b>记一笔</b>，以后能复盘。</span></div>' +
       '</div>';
 
     mountSort('trig', 'trigSort', TRIG_SORTS, renderTrigs);
@@ -256,7 +291,8 @@
     if (!rows.length) {
       $('trigHint').textContent = '';
       list.appendChild(el('div', 'empty',
-        '<div class="big">◌</div>当日暂无标的触及 60 周线。<br>盘中扫描时刻：10:05 / 11:05 / 14:05 / 14:55'));
+        '<div class="big">✅</div>今天没有股票出现这种情况。<br>' +
+        '每天会自动检查 4 次：10:05 / 11:05 / 14:05 / 14:55，收盘后再复核一次。'));
       $('trigNote').textContent = '';
       return;
     }
@@ -266,25 +302,32 @@
       '共 ' + rows.length + ' 只 · ' + sortTip(curField(TRIG_SORTS, st), st.dir);
     sorted.forEach((r, i) => list.appendChild(trigRow(r, i)));
     $('trigNote').innerHTML =
-      '口径：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
-      '「偏离」＝ 现价高于或低于 60 周线的百分比；「量比」＝ 今日成交额 / 近 20 日均成交额。' +
-      '切换排序后，若该字段平时不显示，会临时补在编号行里。<br/>' +
-      '<b>信号性质</b>：14 年全历史回测（5.3 万次触发）显示，触发后跑输全市场等权 ' +
+      '<b>这些数字怎么看</b><br/>' +
+      '「偏离 1.2%」＝现价比 60 周平均线高 1.2%；' +
+      '「量比 2.0」＝今天的成交额是最近 20 天平均的 2 倍；' +
+      '「年内上穿 3 次」＝今年已经有 3 次出现过今天这种情况。<br/>' +
+      '<b>为什么这是风险提示</b>：14 年全历史回测（5.3 万次触发）显示，触发后跑输全市场等权 ' +
       '20 日 −2.1% / 60 日 −4.2% / 120 日 −6.8%，16 个年份无一例外。' +
       '<b>这是掉队风险提示，不是买入信号</b> —— 持仓股触发宜考虑减仓，空仓者不宜据此买入。<br/>' +
-      '按量能分档：<span class="lv hot">放量追高</span> 掉队最明显（+60 日 −6.4%，胜率 34%）；' +
-      '<span class="lv calm">缩量温和</span> 相对轻（+60 日 −2.8%，胜率 42%）。';
+      '按量能分档：<span class="lv hot">涨得猛</span> 之后掉队最明显（+60 日 −6.4%，胜率 34%）；' +
+      '<span class="lv calm">跌得慢</span> 相对轻（+60 日 −2.8%，胜率 42%）。<br/>' +
+      '<b>入选口径</b>：严格型 A 类上穿（上周收盘 &lt; 60 周线 且 现价 ≥ 60 周线）。' +
+      '切换排序后，若该字段平时不显示，会临时补在编号行里。';
   }
 
   /** 按量能热度给触发分档。阈值取自 14 年全历史回测的分档超额中位（+60 日）：
-   *  量比≥2.5 或 换手≥5% → −6.4%/−7.6%（掉队最明显）；量比<1.0 且 换手<2% → −2.8%/−3.0%。 */
+   *  量比≥2.5 或 换手≥5% → −6.4%/−7.6%（掉队最明显）；量比<1.0 且 换手<2% → −2.8%/−3.0%。
+   *  v1.11.0：标签文案改成白话（「涨得猛 / 跌得慢」），并配一句 why 解释；
+   *  ⚠️ 类名 .lv.hot / .lv.calm 与 t2 里的字段名不动 —— 探针按它们定位。 */
   function riskLevel(r) {
     const ok = (v) => typeof v === 'number' && isFinite(v);
     if ((ok(r.amt_ratio) && r.amt_ratio >= 2.5) || (ok(r.turnover) && r.turnover >= 5)) {
-      return { text: '放量追高', cls: 'hot' };
+      return { text: '涨得猛', cls: 'hot', color: 'var(--orange)',
+               why: '涨得急、买的人还多 —— 历史上这种之后掉队最明显（半年跑输 6.4%）' };
     }
     if (ok(r.amt_ratio) && r.amt_ratio < 1.0 && ok(r.turnover) && r.turnover < 2) {
-      return { text: '缩量温和', cls: 'calm' };
+      return { text: '跌得慢', cls: 'calm', color: 'var(--blue)',
+               why: '价格跌得温和、成交也小 —— 历史上下跌相对轻（半年跑输 2.8%）' };
     }
     return null;
   }
@@ -294,6 +337,8 @@
     const devCls = r.dev_pct > 0 ? 'up' : 'down';
     const lv = riskLevel(r);
     const lvTag = lv ? ' <span class="lv ' + lv.cls + '">' + lv.text + '</span>' : '';
+    const lvWhy = lv
+      ? '<div class="t3" style="color:' + lv.color + '">' + esc(lv.why) + '</div>' : '';
     row.innerHTML =
       '<div class="idx">' + (i + 1) + '</div>' +
       '<div class="grow">' +
@@ -304,6 +349,7 @@
           '<span class="' + devCls + '">偏离 ' + pct(r.dev_pct, 2) + '</span>' +
           extraSpan(S.sort.trig.id, r) +
         '</div>' +
+        lvWhy +
       '</div>' +
       '<div class="r">' +
         '<div class="p">' + num(r.price, 2) + '</div>' +
@@ -332,8 +378,8 @@
   }
 
   function futTag(st) {
-    return st === '突破' ? '<span class="tag bo">突破</span>'
-                         : '<span class="tag near">临近</span>';
+    return st === '突破' ? '<span class="tag bo">刚涨上去</span>'
+                         : '<span class="tag near">快到了</span>';
   }
 
   function futRow(r, i) {
@@ -393,7 +439,7 @@
     if (!rows.length) {
       $('futHint').textContent = '';
       list.appendChild(el('div', 'empty',
-        '<div class="big">◌</div>今日暂无期货品种靠近 60 周线。'));
+        '<div class="big">✅</div>今天没有期货品种靠近长期平均价。'));
       return;
     }
     const st = S.sort.fut;
@@ -417,8 +463,8 @@
     const total = hp.total || all.length;
     $('futAllNote').innerHTML = covered < total
       ? '已纳入 <b>' + covered + '</b> / ' + total + ' 个品种；' +
-        '其余品种历史合约不足 61 周（新上市品种），每周自动重试。'
-      : '全部 <b>' + total + '</b> 个品种均在扫描范围内（上期所 20 · 大商所 23 · ' +
+        '剩下的上市时间太短、还算不出 60 周平均价，每周都会自动重试，够了就自动加进来。'
+      : '全部 <b>' + total + '</b> 个品种都在检查范围内（上期所 20 · 大商所 23 · ' +
         '郑商所 26 · 上能源 5 · 中金所 8）。';
   }
 
@@ -441,25 +487,51 @@
     const breakouts = rows.filter((r) => r.status === '突破');
     const nears = rows.filter((r) => r.status !== '突破');
 
+    const nearPct = ((d.near_pct || 0.03) * 100).toFixed(0);
     hero.innerHTML =
+      '<div class="status ' + (rows.length ? 'warn' : 'ok') + '">' +
+        '<div class="emoji">' + (rows.length ? '⚠️' : '✅') + '</div>' +
+        '<div class="body">' +
+          '<div class="title">' + (rows.length
+            ? '今天有 ' + rows.length + ' 个期货品种要留意'
+            : '今天没有期货品种要提醒') + '</div>' +
+          '<div class="desc">' + (rows.length
+            ? '和股票一样，它们也是价格回到了<b>长期平均价</b>附近。其中 <b>' +
+              breakouts.length + ' 个刚刚涨上去</b>，另外 ' + nears.length +
+              ' 个还在附近晃（还没涨上去）。'
+            : '全部 ' + (hp.covered || all.length) + ' 个品种都逐个查过了，没有一个靠近长期平均价。') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<details class="help"><summary>「靠近均线」为什么值得看？</summary>' +
+        '<div class="help-body">' +
+          '<span class="q"><b>长期平均价</b>＝把过去 60 周每周的价格加起来除以 60。' +
+            '价格在这条线附近时，往往是行情要选方向的时候。</span>' +
+          '<span class="q"><b>「刚涨上去」和「还在附近」的区别：</b>' +
+            '刚涨上去＝上周还在这条线下面，现在已经站上去了；' +
+            '还在附近＝没站上去，但离得很近（差不到 ±' + nearPct + '%）。</span>' +
+          '<span class="q"><b>为什么用「加权价」而不是主连合约？</b>' +
+            '加权价＝该品种所有在交易的合约，按持仓量大小加权平均。' +
+            '换月的时候不会像主连合约那样突然跳一下，算出来的均线更干净。</span>' +
+        '</div>' +
+      '</details>' +
       '<div class="metrics c2">' +
-        '<div class="metric hero"><div class="k">今日触发（加权价格 vs 60 周线）</div>' +
-          '<div class="v up">' + rows.length +
-            ' <span style="font-size:15px;font-weight:600">个品种</span></div>' +
+        '<div class="metric hero"><div class="k">今天要留意的品种</div>' +
+          '<div class="v">' + rows.length +
+            ' <span style="font-size:15px;font-weight:600">个</span></div>' +
           '<div class="x">' + esc(d.day || '—') +
-            ' · 覆盖 ' + (hp.covered || all.length) + ' / ' + (hp.total || all.length) +
+            ' · 已覆盖 ' + (hp.covered || all.length) + ' / ' + (hp.total || all.length) +
             ' 个品种' + (d.ts ? ' · ' + esc(d.ts.slice(5, 16).replace('T', ' ')) : '') + '</div>' +
         '</div>' +
-        '<div class="metric"><div class="k">上穿突破</div>' +
-          '<div class="v sm up">' + breakouts.length + ' 个</div>' +
-          '<div class="x">上一交易日在此线下方、当前已上穿</div></div>' +
-        '<div class="metric"><div class="k">临近（±' +
-          ((d.near_pct || 0.03) * 100).toFixed(0) + '%）</div>' +
+        '<div class="metric"><div class="k">刚刚涨上去的</div>' +
+          '<div class="v sm">' + breakouts.length + ' 个</div>' +
+          '<div class="x">昨天还在线下，今天站上去了</div></div>' +
+        '<div class="metric"><div class="k">离得很近的（±' + nearPct + '% 以内）</div>' +
           '<div class="v sm">' + nears.length + ' 个</div>' +
-          '<div class="x">尚未上穿，但已在 60 周线附近</div></div>' +
-        '<div class="metric"><div class="k">加权口径</div>' +
+          '<div class="x">还没站上去，但已经在旁边了</div></div>' +
+        '<div class="metric"><div class="k">价格怎么算的</div>' +
           '<div class="v sm">持仓量加权</div>' +
-          '<div class="x">Σ(收盘×持仓) / Σ(持仓)，无换月跳空</div></div>' +
+          '<div class="x">所有合约按持仓量加权平均，换月不跳空</div></div>' +
       '</div>';
 
     mountSort('fut', 'futSort', FUT_SORTS, renderFutList);
@@ -468,17 +540,21 @@
     renderFutAll();
 
     $('futNote').innerHTML =
-      '口径：<b>突破</b>＝上一交易日加权收盘 &lt; 60 周线 且 最新加权价 ≥ 60 周线；' +
-      '<b>临近</b>＝未上穿但与 60 周线的偏离在 ±' +
-      ((d.near_pct || 0.03) * 100).toFixed(0) + '% 之内。' +
-      '「加权」＝该品种全部在市合约按<b>持仓量</b>加权（' +
-      'Σ(收盘×持仓量) / Σ(持仓量)），与文华/东财的「XX加权」同口径，' +
-      '不会像主力连续那样在换月时跳空。';
+      '<b>「刚涨上去」和「快到了」的区别</b>：' +
+      '刚涨上去＝上一交易日还在均线下面、最新价格已经站上去了（可能真突破）；' +
+      '快到了＝还没站上去，但离均线不到 ±' + nearPct + '%。<br/>' +
+      '<b>每个数字怎么看</b>：「加权价」＝该品种所有在交易合约按持仓量加权平均出来的价格；' +
+      '「60 周线」＝它过去 60 周的长期平均价；' +
+      '「偏离 1.2%」＝加权价比长期平均价高 1.2%；' +
+      '「年内上穿 N 次」＝今年已经有 N 次出现过这种情况。<br/>' +
+      '<b>为什么用加权价</b>：加权＝按<b>持仓量</b>把全部在市合约平均起来' +
+      '（Σ(收盘×持仓量) / Σ(持仓量)），与文华/东财的「XX加权」同口径，' +
+      '不会像主力连续合约那样在换月时价格跳一下、把均线带歪。';
   }
 
   async function openFutKline(code, name) {
     kContext = { code: code, name: name, kind: 'fut' };
-    $('chartTitle').textContent = name + '加权 · 周 K';
+    $('chartTitle').textContent = name + '加权 · 周线图';
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = 'none';
     $('chartSell').style.display = 'none';
@@ -515,12 +591,14 @@
   function renderFutStats(r) {
     $('chartStats').innerHTML =
       metric('加权价', futPrice(r.price), r.name + '加权') +
-      metric('60 周线', futPrice(r.ma60), '偏离 ' + pct(r.dev_pct * 100, 2)) +
-      metric('状态', r.status, r.sector + ' · 均线' + r.slope);
+      metric('60 周平均价', futPrice(r.ma60), '偏离 ' + pct(r.dev_pct * 100, 2)) +
+      metric('当前状态', r.status, r.sector + ' · 均线' + r.slope);
     $('chartNote').innerHTML =
-      '曲线为该品种的<b>持仓量加权价</b>与 <b>60 周线</b>：' +
-      'Σ(合约收盘 × 合约持仓量) / Σ(持仓量)，覆盖全部在市合约。' +
-      '加权口径不产生换月跳空，因此 60 周线不会被主力换月的价格断崖污染。';
+      '<b>怎么看这张图</b>：<b style="color:#5856d6">紫线</b>是该品种的加权价，' +
+      '<b style="color:#ff9500">橙线</b>是「60 周平均价」。' +
+      '加权价＝把该品种全部在交易的合约，按持仓量大小加权平均' +
+      '（Σ(合约收盘 × 持仓量) / Σ(持仓量)）。<br/>' +
+      '这样做的好处：换月的时候价格不会突然跳一下，长期平均价不会被带歪。';
   }
 
   /* 右侧反转形态：C 类（刚突破前高）数量最多，单独给一套排序 */
@@ -593,7 +671,7 @@
     list.innerHTML = '';
     if (!rows.length) {
       hint.textContent = '';
-      list.appendChild(el('div', 'empty', '<div class="big">◌</div>今日暂无该类候选。'));
+      list.appendChild(el('div', 'empty', '<div class="big">✅</div>今天这类没有股票入选。'));
       return;
     }
     const useSort = key === 'C';
@@ -621,27 +699,49 @@
     const today = S.data && S.data.today;
     const stale = d.day && today && d.day !== today;
 
+    const lossTxt = Math.abs(e4.ex60_med || -8.95).toFixed(1);
+    const winTxt = (e4.ex60_win || 31.3).toFixed(1);
     hero.innerHTML =
+      '<div class="status warn">' +
+        '<div class="emoji">⚠️</div>' +
+        '<div class="body">' +
+          '<div class="title">这些不是「买入推荐」</div>' +
+          '<div class="desc">下面这些股票<b>今天涨得很猛</b>。但按这套形态在老远就下手，' +
+            '历史上启动后 60 天平均<b>跑输 ' + lossTxt + '%</b>，胜率只有 ' + winTxt + '%。' +
+            '这里是<b>追涨风险提示</b>。</div>' +
+        '</div>' +
+      '</div>' +
+      '<details class="help"><summary>为什么会跑输？这一页该怎么用？</summary>' +
+        '<div class="help-body">' +
+          '<span class="q"><b>「跑输大盘」是什么意思？</b>' +
+            '同样的钱，买了这只股票，60 天后比「随便买一篮子股票」少赚（或多亏）这么多个百分点。</span>' +
+          '<span class="q"><b>为什么会这样？</b>' +
+            '一只股票突然大涨，多半是短线资金推动的。追进去的人多、后面没人接力，就容易回落。' +
+            '这不是猜的，是把过去 16 年、4,000 多次同样情况全算了一遍的结果。</span>' +
+          '<span class="q"><b>那这一页有什么用？</b>' +
+            '两大用处：① <b>提醒自己别追高</b>；② 手里刚大涨的股票，看看要不要落袋。' +
+            '它<b>不是用来挑股票的</b>。</span>' +
+        '</div>' +
+      '</details>' +
       '<div class="metrics c2">' +
-        '<div class="metric hero"><div class="k">今日启动（阶段④）</div>' +
-          '<div class="v sm up">' + (c.A || 0) +
+        '<div class="metric hero"><div class="k">今天突然大涨的（最要小心）</div>' +
+          '<div class="v sm">' + (c.A || 0) +
             ' <span style="font-size:15px;font-weight:600">只</span></div>' +
           '<div class="x">' + esc(d.day || '—') + ' · 扫描 ' + (d.scanned || 0) + ' 只' +
             (d.ts ? ' · ' + esc(d.ts.slice(11, 16)) : '') + '</div></div>' +
-        '<div class="metric"><div class="k">洗盘观察（阶段③）</div>' +
+        '<div class="metric"><div class="k">涨完跌下来、跌不动的</div>' +
           '<div class="v sm">' + (c.B || 0) + ' 只</div>' +
-          '<div class="x">突破后回踩、缩量企稳</div></div>' +
-        '<div class="metric"><div class="k">刚突破前高（阶段②）</div>' +
+          '<div class="x">比上面那类好一些，但仍然是负超额</div></div>' +
+        '<div class="metric"><div class="k">刚冲过前一次高点的</div>' +
           '<div class="v sm">' + (c.C || 0) + ' 只</div>' +
-          '<div class="x">反转确认，等回踩</div></div>' +
-        '<div class="metric"><div class="k">信号性质（全历史回测）</div>' +
+          '<div class="x">数量最多，同样不建议追</div></div>' +
+        '<div class="metric"><div class="k">这套做法的历史成绩（' +
+          (e4.n || 0).toLocaleString() + ' 次同样情况）</div>' +
           '<div class="v sm">追涨风险</div>' +
-          '<div class="x">启动后 60 日跑输 ' +
-            Math.abs(e4.ex60_med || -8.95).toFixed(1) + '% · 胜率 ' +
-            (e4.ex60_win || 31.3).toFixed(1) + '%</div></div>' +
+          '<div class="x">启动后 60 日跑输 ' + lossTxt + '% · 胜率 ' + winTxt + '%</div></div>' +
       '</div>' +
-      (stale ? '<div class="banner">形态扫描数据停在 ' + esc(d.day) +
-        '（今日尚未扫描），下方名单不是今日结果。</div>' : '');
+      (stale ? '<div class="banner">这一页的数据停在 ' + esc(d.day) +
+        '（今天还没扫到），下面的名单不是今天的结果。</div>' : '');
 
     mountSort('pat', 'patCSort', PAT_SORTS, () => renderPatList('C'));
     ['A', 'B', 'C'].forEach(renderPatList);
@@ -652,6 +752,9 @@
     const rejLine = (r) => '<li>' + esc(r.name) + ' <span class="code">' + esc(r.code) +
       '</span> <span class="muted">' + esc(r.why || (r.drop_reason || []).join('；')) + '</span></li>';
     $('patNote').innerHTML =
+      '<b>简单说，这套形态是四步</b>：' +
+      '① 先跌掉一大半 → ② 涨回来、创了近期新高 → ③ 往回踩一脚但没破位 → ④ 突然放量大涨。' +
+      '这一页抓的就是第 ④ 步 —— 也就是「看起来最像买点」的那一刻。<br/>' +
       '<b>形态口径</b>（阈值集中在 <span class="code">src/pattern/core.py</span>，' +
       '回测与实盘共用同一份判定逻辑）：' +
       '① 前期深跌＝更早 250 日高点 → 近 60 日低点回撤 ≥25%；' +
@@ -702,11 +805,11 @@
 
     let coverCell = '';
     if (live) {
-      coverCell = '<div class="metric hero"><div class="k">全市场覆盖</div>' +
+      coverCell = '<div class="metric hero"><div class="k">覆盖了多少股票</div>' +
         '<div class="v sm">' + have + ' / ' + live + ' 只 · ' + pct.toFixed(1) + '%</div>' +
-        '<div class="x">上市不足 61 周的次新股 ' + shortN +
-        ' 只（无法计算 60 周线，满 61 周自动纳入）' +
-        (h.tx_codes ? ' · 其中 ' + h.tx_codes + ' 只由腾讯源兜底' : '') +
+        '<div class="x">' + shortN + ' 只上市还不到 61 周，暂时画不出长期平均价，' +
+        '满 61 周会自动加进来' +
+        (h.tx_codes ? ' · 其中 ' + h.tx_codes + ' 只用备用源补齐' : '') +
         '</div></div>';
     }
 
@@ -715,42 +818,46 @@
     if (us.todo || us.fetched) {
       const rate = us.todo ? Math.round(us.fetched / us.todo * 100) : 100;
       const tx = us.fallback || 0;
-      fetchCell = '<div class="metric"><div class="k">数据仓抓取（上次增量更新）</div>' +
+      fetchCell = '<div class="metric"><div class="k">上次更新抓到了多少</div>' +
         '<div class="v sm">' + us.fetched + ' / ' + us.todo + ' 只 · ' + rate + '%</div>' +
         '<div class="x">' + esc(us.ts || '') +
-        (tx ? ' · 其中 ' + tx + ' 只由腾讯兜底补齐' : '') +
-        (us.unresolved ? ' · ' + us.unresolved + ' 只两源均未取到（已沿用旧值，覆盖面未缩水）'
+        (tx ? ' · 其中 ' + tx + ' 只用备用源补齐' : '') +
+        (us.unresolved ? ' · ' + us.unresolved + ' 只两个源都没取到（沿用上次的数据，覆盖面未缩水）'
                        : '') +
-        (us.timed_out ? ' · 达到时间预算提前停止' : '') + '</div></div>';
+        (us.timed_out ? ' · 到时间上限提前收工' : '') + '</div></div>';
     }
 
     $('healthGrid').innerHTML =
-      metric('仓内标的', h.stocks || 0, '只（可计算 60 周线）') +
-      metric('周线记录', ((h.weekly_rows || 0) / 10000).toFixed(1), '万行') +
-      metric('最新数据日', h.last_update || '—', 'baostock 后复权') +
-      metric('图表累计', h.chart_count || 0, '张（近 7 个交易日）') +
-      metric('数据仓体积', h.store_mb || 0, 'MB') +
-      metric('名称覆盖', h.names_covered || 0, '只') +
+      metric('正在盯着的股票', h.stocks || 0, '只（能算出 60 周平均价的）') +
+      metric('攒了多少周的价格', ((h.weekly_rows || 0) / 10000).toFixed(1), '万条记录') +
+      metric('数据最新到哪天', h.last_update || '—', '已做除权复权处理') +
+      metric('画过的图', h.chart_count || 0, '张（最近 7 个交易日）') +
+      metric('数据占用空间', h.store_mb || 0, 'MB') +
+      metric('认识多少只股票', h.names_covered || 0, '只（有名称）') +
       coverCell + fetchCell;
 
     const gapTxt = us.gap_filled
-      ? '本轮新纳入 <b>' + us.gap_filled + '</b> 只（腾讯源补齐）。' : '';
+      ? '本轮新纳入 <b>' + us.gap_filled + '</b> 只（由备用源补齐）。' : '';
     $('healthNote').innerHTML =
-      '<b>每次扫描都是全市场逐只判定，不做抽样、不留遗漏。</b>' +
-      '「仓内标的」＝已纳入扫描、且历史足够计算 60 周线的标的数（' + have + ' 只）；' +
-      '与全市场在市 ' + live + ' 只的差额是 <b>' + shortN +
-      ' 只上市不足 61 周的次新股</b>——物理上还画不出 60 周线，' +
-      '它们每周自动重试，满 61 周即刻进仓。<br>' +
+      '<b>每次检查都是把全部股票挨个算一遍</b>，不抽样、不跳着看。<br/>' +
+      '「正在盯着的股票」' + have + ' 只＝历史数据够长、算得出 60 周平均价的股票。' +
+      '和全市场 ' + live + ' 只相差的 <b>' + shortN + ' 只</b>，是上市还不到 61 周的新股——' +
+      '物理上还画不出 60 周平均价。系统每周自动重试，满 61 周即刻纳入。<br/>' +
       gapTxt +
-      '数据源以 baostock 为主，腾讯行情为兜底（baostock 触发限流或个别标的缺数据时自动切换，' +
-      '当前 ' + (h.tx_codes || 0) + ' 只走腾讯源）。每个交易日 16:07 自动增量更新，' +
-      '合并写入、失败只沿用旧值、绝不缩小覆盖面；10:05 / 11:05 / 14:05 / 14:55 盘中扫描，15:15 收盘确认。';
+      '数据主要以 baostock 为主源，个别股票取不到时自动换腾讯行情兜底（当前 ' +
+      (h.tx_codes || 0) + ' 只用备用源）。每个交易日 16:07 自动更新数据；' +
+      '10:05 / 11:05 / 14:05 / 14:55 盘中检查，15:15 收盘后复核。<br/>' +
+      '更新原则：<b>只补齐、不覆盖</b>。取不到的股票沿用上次数据，<b>绝不会让覆盖面缩水</b>。';
 
     // 额度
     const p = d.push || {};
     const used = p.count || 0, lim = p.limit || 5;
     const rate = Math.min(100, Math.round(used / lim * 100));
+    const paused = p.enabled === false;
     $('quotaBox').innerHTML =
+      (paused ? '<div class="banner" style="margin:0 0 12px">' +
+        '<b>通知目前是关着的</b>（按你的要求关的）。看板、历史记录、数据更新都照常，' +
+        '只是不再发手机通知。</div>' : '') +
       '<div style="display:flex;align-items:baseline;gap:8px">' +
         '<span style="font-size:26px;font-weight:680;letter-spacing:-.6px">' + used + '</span>' +
         '<span class="muted" style="font-size:13px">/ ' + lim + ' 条</span>' +
@@ -758,8 +865,9 @@
       '</div>' +
       '<div class="bar-track"><div class="bar-fill" style="width:' + rate +
         '%;background:' + (rate >= 100 ? 'var(--up)' : 'var(--blue)') + '"></div></div>' +
-      '<div class="note" style="padding:10px 0 0">Server酱 免费额度每日 5 条。' +
-      '盘中扫描仅在「有新触发」时推送，收盘确认批每次必推，护栏确保不超限。</div>';
+      '<div class="note" style="padding:10px 0 0">' +
+        '通知走 Server酱 的免费通道，每天最多 ' + lim + ' 条，超过就发不出去了。<br/>' +
+        '盘中只有「出现新情况」时才发，收盘后那一次必发；有护栏，不会超量。</div>';
 
     // 趋势
     const tr = d.trend || [];
@@ -776,9 +884,9 @@
     }
     runs.forEach((r) => {
       const st = r.status === 'completed' ? (r.conclusion === 'success' ? 'ok' : 'fail') : 'run';
-      const badge = st === 'ok' ? '<span class="tag down">成功</span>'
-        : st === 'fail' ? '<span class="tag up">' + esc(r.conclusion || '失败') + '</span>'
-        : '<span class="tag orange">进行中</span>';
+      const badge = st === 'ok' ? '<span class="tag down">跑成功了</span>'
+        : st === 'fail' ? '<span class="tag up">' + esc(r.conclusion || '没跑成') + '</span>'
+        : '<span class="tag orange">正在跑</span>';
       const row = el('div', 'row tap');
       row.innerHTML =
         '<div class="grow"><div class="t1">' + esc(r.label) + ' ' + badge + '</div>' +
@@ -786,7 +894,7 @@
         '<span class="code">' + esc(r.sha || '') + '</span></div></div>' +
         '<div class="r"><div class="p">' + (r.duration_s >= 60 ?
           (r.duration_s / 60).toFixed(1) + ' 分' : r.duration_s + ' 秒') + '</div>' +
-        '<div class="s muted">' + (r.status === 'completed' ? '已完成' : '运行中') + '</div></div>';
+        '<div class="s muted">' + (r.status === 'completed' ? '已结束' : '还在跑') + '</div></div>';
       if (r.url) row.addEventListener('click', () => window.open(r.url, '_blank'));
       list.appendChild(row);
     });
@@ -795,7 +903,7 @@
   let trendChart = null;
   function drawTrend(tr) {
     const node = $('trendChart');
-    if (!tr.length) { node.innerHTML = '<div class="empty">还没有积累足够的扫描记录</div>'; return; }
+    if (!tr.length) { node.innerHTML = '<div class="empty">还没有攒够记录</div>'; return; }
     trendChart = trendChart || initChart(node);
     if (!trendChart) return;
     trendChart.setOption({
@@ -804,8 +912,9 @@
         trigger: 'axis',
         formatter: (ps) => {
           const i = ps[0].dataIndex, t = tr[i];
-          return t.day + '<br/>触发 <b>' + t.peak + '</b> 只<br/>最近批次（' +
-            (t.mode === 'intraday' ? '盘中' : t.mode === 'confirm' ? '收盘' : t.mode) + '）' + t.n + ' 只';
+          return t.day + '<br/>当天要留意 <b>' + t.peak + '</b> 只<br/>最近一次（' +
+            (t.mode === 'intraday' ? '盘中' : t.mode === 'confirm' ? '收盘后' : t.mode) + '）有 ' +
+            t.n + ' 只';
         },
         backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
         textStyle: { color: '#fff', fontSize: 12 },
@@ -830,7 +939,7 @@
         markLine: {
           silent: true, symbol: 'none',
           lineStyle: { color: '#ff9500', type: 'dashed', width: 1 },
-          label: { formatter: '额度 5', color: '#ff9500', fontSize: 10, position: 'insideEndTop' },
+          label: { formatter: '每天最多 5 条', color: '#ff9500', fontSize: 10, position: 'insideEndTop' },
           data: [{ yAxis: 5 }],
         },
       }],
@@ -846,7 +955,7 @@
 
   async function openKline(code, name) {
     kContext = { code: code, name: name, kind: 'stock' };
-    $('chartTitle').textContent = name + ' · 周 K';
+    $('chartTitle').textContent = name + ' · 周线图';
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = '';
     $('chartSell').style.display = '';
@@ -905,13 +1014,17 @@
     const ind = (st.industry || {})[code] || '—';
     const q = S.quotes[code];
     $('chartStats').innerHTML =
-      metric('最新周收盘', num(last.close, 2), last.week) +
-      metric('60 周线', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
-      metric('申万行业', ind, q ? '现价 ' + num(q[0], 2) : '');
+      metric('这周收盘价', num(last.close, 2), last.week) +
+      metric('60 周平均价', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
+      metric('所属行业', ind, q ? '现在的价格 ' + num(q[0], 2) : '');
     $('chartNote').innerHTML =
-      '曲线为<b>前复权周收盘价</b>与 <b>60 周线</b>（换前复权只改变价格刻度，' +
-      '收盘/均线比值与预警信号完全一致）。' +
-      'B / S 标记来自你的模拟账户在该标的上的买卖点。';
+      '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是每周的收盘价，' +
+      '<b style="color:#ff9500">橙线</b>是「60 周平均价」（长期平均价）。' +
+      '蓝线从下面爬回来靠近橙线，就是「今天」页里提醒你的那种情况；' +
+      '蓝线跌破橙线，说明还在走弱。<br/>' +
+      '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
+      '和系统判断用的口径算出来结论完全一致。<br/>' +
+      '图上的 <b>B / S</b> 是你自己在模拟账户里记的买入 / 卖出点。';
   }
 
   /* ------------------------------------------------ 弹层与 Tab */

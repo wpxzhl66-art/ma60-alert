@@ -17,13 +17,13 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.10.3</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.11.0</span>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- ==================== 今日 ==================== -->
+  <!-- ==================== 今天 ==================== -->
   <section class="tabpane on" id="pane-today">
     <div class="card" id="todayHero">
       <div class="loading"><span class="spinner"></span></div>
@@ -37,11 +37,14 @@
       <div class="card-body hist-link" id="patBox" style="padding:13px 16px"></div>
     </div>
 
-    <div class="section-label">今日触发明细</div>
+    <div class="section-label">一只一只看</div>
     <div class="card">
       <div class="card-head">
-        <h2>触及 60 周线的 A 股 · 掉队风险</h2>
+        <h2>跌久了、刚爬回长期均线的股票</h2>
         <div class="hint" id="trigHint">—</div>
+      </div>
+      <div class="plain">
+        下面每一行就是一只股票。<b>点一下能看它的周线图</b>，不用记代码。
       </div>
       <div class="sortbar" id="trigSort"></div>
       <div class="list" id="trigList">
@@ -51,39 +54,48 @@
     </div>
   </section>
 
-  <!-- ==================== 形态 ==================== -->
+  <!-- ==================== 大涨股 ==================== -->
   <section class="tabpane" id="pane-pattern">
     <div class="card" id="patHero">
       <div class="loading"><span class="spinner"></span></div>
     </div>
 
-    <div class="section-label">今日启动（阶段④）</div>
+    <div class="section-label">今天突然大涨的 · 最要小心</div>
     <div class="card">
       <div class="card-head">
-        <h2>涨停 / 放量大阳线启动</h2>
+        <h2>今天涨停 / 大涨的股票</h2>
         <div class="hint" id="patAHint">—</div>
+      </div>
+      <div class="plain">
+        看着最猛的时候买进去，历史上是<b>亏钱最多</b>的一种做法。
       </div>
       <div class="list" id="patAList">
         <div class="loading"><span class="spinner"></span></div>
       </div>
     </div>
 
-    <div class="section-label">洗盘观察（阶段③）</div>
+    <div class="section-label">涨完跌下来、跌不动的</div>
     <div class="card">
       <div class="card-head">
-        <h2>突破后回踩、缩量企稳</h2>
+        <h2>冲高之后回踩、卖压变小了</h2>
         <div class="hint" id="patBHint">—</div>
+      </div>
+      <div class="plain">
+        这一类比上面那类<b>好一些</b>，但历史上仍然是跑输大盘的。
       </div>
       <div class="list" id="patBList">
         <div class="loading"><span class="spinner"></span></div>
       </div>
     </div>
 
-    <div class="section-label">刚突破前高（阶段②）</div>
+    <div class="section-label">刚冲过前一次高点的</div>
     <div class="card">
       <div class="card-head">
-        <h2>反转确认，等回踩</h2>
+        <h2>刚创出近期新高的股票</h2>
         <div class="hint" id="patCHint">—</div>
+      </div>
+      <div class="plain">
+        常见的想法是「突破了就该追」，但历史数据<b>不支持</b>这个做法。
       </div>
       <div class="sortbar" id="patCSort"></div>
       <div class="list" id="patCList">
@@ -102,11 +114,14 @@
       <div class="loading"><span class="spinner"></span></div>
     </div>
 
-    <div class="section-label">触发品种</div>
+    <div class="section-label">已经靠近均线的品种</div>
     <div class="card">
       <div class="card-head">
-        <h2>靠近 60 周线的期货品种加权</h2>
+        <h2>今天的期货品种提醒</h2>
         <div class="hint" id="futHint">—</div>
+      </div>
+      <div class="plain">
+        和股票用的是同一套逻辑：看价格是不是回到了<b>长期平均价</b>附近。
       </div>
       <div class="sortbar" id="futSort"></div>
       <div class="list" id="futList">
@@ -115,11 +130,14 @@
       <div class="note" id="futNote"></div>
     </div>
 
-    <div class="section-label">全部品种</div>
+    <div class="section-label">全部期货品种</div>
     <div class="card">
       <div class="card-head">
-        <h2>各品种加权与 60 周线的距离</h2>
+        <h2>每个品种离均线还有多远</h2>
         <div class="hint" id="futAllHint"></div>
+      </div>
+      <div class="plain">
+        上面那栏是<b>有情况</b>的品种，这里把全部品种都列出来，方便对照。
       </div>
       <div class="sortbar" id="futAllSort"></div>
       <div class="list" id="futAllList">
@@ -129,9 +147,9 @@
     </div>
   </section>
 
-  <!-- ==================== 运行 ==================== -->
+  <!-- ==================== 系统 ==================== -->
   <section class="tabpane" id="pane-system">
-    <div class="section-label">数据资产健康度</div>
+    <div class="section-label">数据新不新、全不全</div>
     <div class="card">
       <div class="metrics c2" id="healthGrid">
         <div class="loading"><span class="spinner"></span></div>
@@ -139,47 +157,47 @@
       <div class="note" id="healthNote"></div>
     </div>
 
-    <div class="section-label">推送额度</div>
+    <div class="section-label">每天还能发几条通知</div>
     <div class="card">
       <div class="card-body" id="quotaBox"></div>
     </div>
 
-    <div class="section-label">每日触发数量趋势</div>
+    <div class="section-label">最近一个月每天有几只</div>
     <div class="card">
-      <div class="card-head"><h2>最近 30 个交易日</h2><div class="hint" id="trendHint"></div></div>
+      <div class="card-head"><h2>每天的触发数量</h2><div class="hint" id="trendHint"></div></div>
       <div id="trendChart" class="chart sm"></div>
       <div class="legend">
-        <span><i style="background:#007aff"></i>当日触发数</span>
-        <span><i style="background:#ff9500"></i>推送额度上限 5 条/天</span>
+        <span><i style="background:#007aff"></i>当天有情况的数量</span>
+        <span><i style="background:#ff9500"></i>每天最多能发 5 条通知</span>
       </div>
     </div>
 
-    <div class="section-label">运行流水</div>
+    <div class="section-label">系统让谁在什么时间干活</div>
     <div class="card">
-      <div class="card-head"><h2>最近的云端任务</h2><div class="hint">GitHub Actions</div></div>
+      <div class="card-head"><h2>最近的自动任务</h2><div class="hint">GitHub Actions</div></div>
       <div class="list" id="runList">
         <div class="loading"><span class="spinner"></span></div>
       </div>
     </div>
   </section>
 
-  <!-- ==================== 账户 ==================== -->
+  <!-- ==================== 我的 ==================== -->
   <section class="tabpane" id="pane-account">
     <div id="authBox">
       <div class="loading"><span class="spinner"></span></div>
     </div>
 
     <div id="acctBox" style="display:none">
-      <div class="section-label">资产总览</div>
+      <div class="section-label">我的钱</div>
       <div class="card">
         <div class="metrics c2" id="assetGrid"></div>
         <div class="card-body" id="acctMeta" style="padding-top:12px"></div>
       </div>
 
-      <div class="section-label">持仓</div>
+      <div class="section-label">手里的股票</div>
       <div class="card">
         <div class="card-head">
-          <h2>当前持仓</h2>
+          <h2>现在拿着哪些</h2>
           <div class="hint" id="posHint">—</div>
         </div>
         <div class="list" id="posList"></div>
@@ -188,22 +206,22 @@
         </div>
       </div>
 
-      <div class="section-label">绩效</div>
+      <div class="section-label">赚了还是亏了</div>
       <div class="card">
         <div class="metrics c2" id="perfGrid"></div>
-        <div class="card-head" style="padding-top:14px"><h2>资产曲线</h2><div class="hint" id="equityHint"></div></div>
+        <div class="card-head" style="padding-top:14px"><h2>钱是怎么变多的</h2><div class="hint" id="equityHint"></div></div>
         <div id="equityChart" class="chart"></div>
         <div class="legend">
           <span><i style="background:#007aff"></i>账户总资产</span>
-          <span><i style="background:#8e8e93"></i>沪深300（同起点归一）</span>
+          <span><i style="background:#8e8e93"></i>沪深300（同起点）</span>
         </div>
-        <div class="card-head" style="padding-top:4px"><h2>标签复盘</h2><div class="hint">按买入理由分组统计</div></div>
+        <div class="card-head" style="padding-top:4px"><h2>哪种买法更赚</h2><div class="hint">按买入理由分组</div></div>
         <div class="list" id="tagList"></div>
       </div>
 
-      <div class="section-label">交易记录</div>
+      <div class="section-label">买卖记录</div>
       <div class="card">
-        <div class="card-head"><h2>成交流水</h2><div class="hint" id="tradeHint">—</div></div>
+        <div class="card-head"><h2>每一笔成交</h2><div class="hint" id="tradeHint">—</div></div>
         <div class="list" id="tradeList"></div>
       </div>
 
@@ -211,11 +229,11 @@
         <div class="card-body">
           <div class="hr"></div>
           <div class="btn-row">
-            <button class="btn sec" id="btnExport">导出 CSV</button>
+            <button class="btn sec" id="btnExport">导出成表格</button>
             <button class="btn sec" id="btnLogout">退出登录</button>
           </div>
           <div class="note" style="padding:12px 0 0">
-            数据存于云端，手机与电脑共用同一本账。
+            数据存在云端，手机和电脑看到的是同一本账。
           </div>
         </div>
       </div>
@@ -226,11 +244,11 @@
 
 <nav class="tabbar">
   <div class="inner">
-    <button class="on" data-tab="today"><span class="ico">◎</span>今日</button>
-    <button data-tab="pattern"><span class="ico">◧</span>形态</button>
-    <button data-tab="futures"><span class="ico">◈</span>期货</button>
-    <button data-tab="system"><span class="ico">☰</span>运行</button>
-    <button data-tab="account"><span class="ico">¥</span>账户</button>
+    <button class="on" data-tab="today"><span class="ico">📅</span>今天</button>
+    <button data-tab="pattern"><span class="ico">🔥</span>大涨股</button>
+    <button data-tab="futures"><span class="ico">📊</span>期货</button>
+    <button data-tab="system"><span class="ico">⚙️</span>系统</button>
+    <button data-tab="account"><span class="ico">👤</span>我的</button>
   </div>
 </nav>
 
@@ -248,25 +266,25 @@
       </div>
 
       <div class="field">
-        <label>股票（输入代码或名称搜索）</label>
-        <input id="fStock" list="stockOptions" placeholder="如 600020 或 中原高速" autocomplete="off">
+        <label>哪只股票（打代码或名字都行）</label>
+        <input id="fStock" list="stockOptions" placeholder="例如 600020 或 中原高速" autocomplete="off">
         <datalist id="stockOptions"></datalist>
       </div>
 
       <div class="field">
-        <label>成交价（元/股）<span class="muted" id="priceHint"></span></label>
+        <label>一股多少钱<span class="muted" id="priceHint"></span></label>
         <input id="fPrice" type="number" step="0.001" inputmode="decimal" placeholder="0.000">
       </div>
 
       <div class="field">
-        <label>数量（股，100 的整数倍）</label>
+        <label>买了多少股（100 的整数倍）</label>
         <input id="fShares" type="number" step="100" inputmode="numeric" placeholder="100">
       </div>
 
       <div class="field">
-        <label>复盘标签</label>
+        <label>这次为什么买 / 卖（方便以后复盘）</label>
         <select id="fTag">
-          <option value="">（不设置）</option>
+          <option value="">（先不选）</option>
           <option>上穿突破</option>
           <option>回踩确认</option>
           <option>多头排列</option>
@@ -279,8 +297,8 @@
       </div>
 
       <div class="field">
-        <label>备注</label>
-        <input id="fNote" placeholder="一句话记下当时的判断">
+        <label>再补一句话（可不填）</label>
+        <input id="fNote" placeholder="当时是怎么想的">
       </div>
 
       <div class="card" style="margin:4px 0 14px">
@@ -298,7 +316,7 @@
 <div class="sheet-mask" id="chartMask">
   <div class="sheet">
     <div class="sheet-head">
-      <h3 id="chartTitle">周 K</h3>
+      <h3 id="chartTitle">周线图</h3>
       <span class="x" id="chartClose">✕</span>
     </div>
     <div id="kChart" class="chart" style="height:330px"></div>

@@ -382,3 +382,91 @@ body.page-history { padding-bottom: 30px; }
 .rej[open] > summary::before { content: '▾ '; }
 .rej ul { margin: 6px 0 0; padding-left: 16px; }
 .rej li { font-size: 12px; line-height: 1.95; color: var(--text2); }
+
+/* ============================================================
+   v1.11.0 · 「小学生也能看懂」人话界面
+   目标：每屏第一句就说清楚「这是什么、我要不要紧张」，
+        专业术语一律降级到可折叠的「这是什么意思？」里。
+   ============================================================ */
+
+/* ---------------- 人话状态卡（每页第一眼看到的东西） ----------------
+   刻意不用涨红/跌绿表达「安全 / 需注意」——那会与行情颜色混淆。
+   需要留意 = 橙，一切正常 = 蓝。 */
+.status { display: flex; align-items: flex-start; gap: 12px; padding: 17px 16px 15px; }
+.status.warn { background: linear-gradient(180deg, var(--orange-bg), transparent 78%); }
+.status.ok { background: linear-gradient(180deg, var(--blue-bg), transparent 78%); }
+.status .emoji { font-size: 31px; line-height: 1.05; flex: 0 0 auto; }
+.status .body { flex: 1; min-width: 0; }
+.status .title { font-size: 21px; font-weight: 720; letter-spacing: -.5px; line-height: 1.28; }
+.status.warn .title { color: var(--orange); }
+.status.ok .title { color: var(--blue); }
+.status .desc {
+  font-size: 13.5px; color: var(--text2); margin-top: 6px; line-height: 1.6;
+}
+.status .desc b { color: var(--text); font-weight: 650; }
+
+/* ---------------- 可折叠的「这是什么意思？」 ---------------- */
+.help { border-top: .5px solid var(--sep2); }
+.help > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 16px; font-size: 13px; font-weight: 620; color: var(--blue);
+}
+.help > summary::-webkit-details-marker { display: none; }
+.help > summary::before {
+  content: '?'; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: var(--blue); color: #fff; font-size: 11.5px; font-weight: 800;
+}
+.help[open] > summary::before { content: '−'; }
+.help .help-body {
+  padding: 0 16px 15px; font-size: 12.5px; color: var(--text2); line-height: 1.8;
+}
+.help .help-body b { color: var(--text); }
+.help .help-body .q { display: block; margin-top: 4px; }
+.help .help-body .q:first-child { margin-top: 0; }
+
+/* ---------------- 三步上手（首页顶部，回答「这工具怎么用」） ---------------- */
+.howto { padding: 2px 16px 4px; display: flex; flex-direction: column; gap: 9px; }
+.howto .s { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--text2); line-height: 1.55; }
+.howto .s i {
+  flex: 0 0 auto; margin-top: 1px;
+  width: 19px; height: 19px; border-radius: 50%;
+  background: var(--blue); color: #fff;
+  font-size: 11.5px; font-weight: 700; font-style: normal;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.howto .s b { color: var(--text); font-weight: 650; }
+
+/* ---------------- 一句话导语（卡片正文开头） ---------------- */
+.plain {
+  font-size: 13px; color: var(--text2); line-height: 1.62;
+  padding: 0 16px 13px;
+}
+.plain b { color: var(--text); font-weight: 650; }
+
+/* ---------------- 术语小注（跟在数字后面的人话解释） ---------------- */
+.metric .k .t { color: var(--text3); font-weight: 400; }
+
+/* ---------------- 底部导航：图标放大，文字加大 ---------------- */
+.tabbar .ico { font-size: 21px; line-height: 1.1; }
+.tabbar button { font-size: 11px; font-weight: 600; padding: 7px 0 9px; }
+
+/* ---------------- 列表行放大一行「人话脚注」 ---------------- */
+.row .t3 {
+  font-size: 12px; color: var(--text2); margin-top: 3px;
+  display: flex; align-items: center; gap: 6px;
+}
+.row .t3 .dot2 { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+
+/* 阈值标签（放量追高 / 缩量温和）—— 换成白话后的样式，保留 .lv 类名供探针定位 */
+.lv { font-size: 11px; font-weight: 650; padding: 2px 7px; border-radius: 7px; white-space: nowrap; }
+.lv.hot { background: var(--orange-bg); color: var(--orange); }
+.lv.calm { background: var(--blue-bg); color: var(--blue); }
+
+/* 窄屏：标题独占一行，状态角标换行到下面，避免「交易助手_自编」被挤成两行 */
+@media (max-width: 640px) {
+  .topbar .wrap { flex-wrap: wrap; row-gap: 8px; }
+  .topbar .brand { flex: 0 0 100%; }
+}

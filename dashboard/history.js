@@ -12,7 +12,7 @@
           loadJSON, fetchWeeklyOne, weeklyChartOption, ma } = C;
 
   // 交付物版本号：每次改动递增（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.9.0';
+  const APP_VERSION = 'v1.11.0';
 
   const S = {
     d: null,          // history.json
@@ -247,8 +247,8 @@
     }
 
     $('listNote').innerHTML = S.view === 'day'
-      ? '点任意一行可看该股的周 K 与触发位置。'
-      : '右侧两行：当前偏离 60 周线的幅度 / 首次触发至今的涨跌幅。点行看周 K。';
+      ? '点任意一行，就能看这只股票的周线图、以及它是在哪一周被扫出来的。'
+      : '右边两个数字：现在比「长期平均价」高或低多少 / 从第一次被扫出来到现在涨跌了多少。点一下看周线图。';
   }
 
   function mountSortForView() {
@@ -326,15 +326,15 @@
     const st = stkOf(code);
 
     $('chartStats').innerHTML =
-      metric('最新周收盘', num(last.close, 2), last.week) +
-      metric('60 周线', num(maNow, 2), '偏离 ' + pct(dev, 2)) +
-      metric('窗口内触发', evs.length + ' 次',
+      metric('这周收盘价', num(last.close, 2), last.week) +
+      metric('60 周平均价', num(maNow, 2), '偏离 ' + pct(dev, 2)) +
+      metric('这一个月被扫出', evs.length + ' 次',
              lastEv ? '最近 ' + lastEv.d.slice(5) : '—');
 
     const parts = [];
-    if (st.ret != null) parts.push('首次触发至今 ' + pct(st.ret, 1));
-    if (st.above === true) parts.push('当前仍站上 60 周线');
-    else if (st.above === false) parts.push('当前已跌破 60 周线');
+    if (st.ret != null) parts.push('从第一次被扫出到现在 ' + pct(st.ret, 1));
+    if (st.above === true) parts.push('现在仍在长期平均价上方');
+    else if (st.above === false) parts.push('现在已经跌到长期平均价下方');
     parts.push('橙色标记为触发当周');
     $('chartNote').textContent = parts.join(' · ');
   }

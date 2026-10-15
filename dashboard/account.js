@@ -168,13 +168,13 @@
     authBox().style.display = '';
     $('acctBox').style.display = 'none';
     authBox().innerHTML =
-      '<div class="section-label">模拟资金账户</div>' +
+      '<div class="section-label">模拟账户（用的不是真钱）</div>' +
       '<div class="card"><div class="card-head"><h2>登录后开始记账</h2>' +
       '<div class="hint">手机 / 电脑同一本账</div></div>' +
       '<div class="card-body">' +
         '<div class="note" style="padding:0 0 14px">' +
-          '用来自动记录你在 60 周线信号上的每一笔买卖，实时算出持仓成本、浮动盈亏、' +
-          '收益率与最大回撤，并把买卖点标在周 K 图上。' +
+          '用来记录你自己做的每一笔买卖：自动算出手里每只股票的成本、现在赚了还是亏了，' +
+          '并把你买、卖的那一天标在周线图上，方便回头看当时判断对不对。' +
         '</div>' +
         '<div id="phoneForm">' +
           '<div class="field"><label>手机号</label>' +
@@ -356,19 +356,19 @@
     const floating = mv - cost;
 
     $('assetGrid').innerHTML =
-      '<div class="metric hero"><div class="k">总资产</div>' +
+      '<div class="metric hero"><div class="k">账户里一共多少钱</div>' +
         '<div class="v">' + num(total, 2) + '</div>' +
-        '<div class="x">初始资金 ' + num(init, 0) + ' 元</div></div>' +
-      '<div class="metric"><div class="k">累计收益</div>' +
+        '<div class="x">一开始投入 ' + num(init, 0) + ' 元</div></div>' +
+      '<div class="metric"><div class="k">总共赚 / 亏</div>' +
         '<div class="v sm ' + cls(profit) + '">' + (profit >= 0 ? '+' : '') + num(profit, 2) + '</div>' +
         '<div class="x ' + cls(ret) + '">' + pct(ret, 2) + '</div></div>' +
-      '<div class="metric"><div class="k">可用现金</div><div class="v sm">' + num(A.cash, 2) + '</div>' +
-        '<div class="x">仓位 ' + (total > 0 ? (mv / total * 100).toFixed(1) : '0.0') + '%</div></div>' +
-      '<div class="metric"><div class="k">持仓市值</div><div class="v sm">' + num(mv, 2) + '</div>' +
-        '<div class="x ' + cls(floating) + '">浮动 ' + (floating >= 0 ? '+' : '') + num(floating, 2) + '</div></div>' +
-      '<div class="metric"><div class="k">已实现盈亏</div>' +
+      '<div class="metric"><div class="k">手上现金</div><div class="v sm">' + num(A.cash, 2) + '</div>' +
+        '<div class="x">股票占了 ' + (total > 0 ? (mv / total * 100).toFixed(1) : '0.0') + '%</div></div>' +
+      '<div class="metric"><div class="k">股票现在值多少</div><div class="v sm">' + num(mv, 2) + '</div>' +
+        '<div class="x ' + cls(floating) + '">还没卖，账面 ' + (floating >= 0 ? '+' : '') + num(floating, 2) + '</div></div>' +
+      '<div class="metric"><div class="k">卖掉之后赚 / 亏</div>' +
         '<div class="v sm ' + cls(realizedTotal()) + '">' + (realizedTotal() >= 0 ? '+' : '') + num(realizedTotal(), 2) + '</div>' +
-        '<div class="x">' + A.trades.length + ' 笔成交</div></div>';
+        '<div class="x">一共成交 ' + A.trades.length + ' 次</div></div>';
 
     const user = A.session.user || {};
     $('acctMeta').innerHTML =
@@ -385,7 +385,8 @@
       .sort((a, b) => (priceOf(b.code) || 0) * b.shares - (priceOf(a.code) || 0) * a.shares);
     $('posHint').textContent = rows.length ? rows.length + ' 只' : '';
     if (!rows.length) {
-      list.appendChild(el('div', 'empty', '<div class="big">◌</div>还没有持仓<br>点「记一笔交易」或从「今日」里直接买入'));
+      list.appendChild(el('div', 'empty',
+        '<div class="big">📄</div>现在手上没有股票。<br>点下面的「记一笔交易」，或者去「今天」页点股票直接买入。'));
       return;
     }
     rows.forEach((p) => {
@@ -455,14 +456,17 @@
     const myRet = init ? (total - init) / init * 100 : 0;
 
     $('perfGrid').innerHTML =
-      metric('胜率', winRate == null ? '—' : winRate.toFixed(1) + '%',
-        sells ? wins + ' 胜 / ' + sells + ' 次平仓' : '还没有平仓记录', '') +
-      metric('最大回撤', mdd == null ? '—' : mdd.toFixed(2) + '%', '按周结算') +
-      metric('账户收益', pct(myRet, 2), '相对初始资金', cls(myRet)) +
-      metric('沪深300', benchRet == null ? '—' : pct(benchRet, 2), '同起点对比', cls(benchRet || 0)) +
-      metric('超额收益', benchRet == null ? '—' : pct(myRet - benchRet, 2), '账户 − 基准', cls(myRet - (benchRet || 0))) +
-      metric('交易笔数', A.trades.length, '买入 ' + A.trades.filter((t) => t.side === 'buy').length +
-        ' / 卖出 ' + A.trades.filter((t) => t.side === 'sell').length);
+      metric('卖出的赚亏比例', winRate == null ? '—' : winRate.toFixed(1) + '%',
+        sells ? sells + ' 次卖出里 ' + wins + ' 次是赚的' : '还没卖过', '') +
+      metric('最多亏过多少', mdd == null ? '—' : mdd.toFixed(2) + '%', '从最高点算起，按周统计') +
+      metric('我这个账户赚了', pct(myRet, 2), '相对一开始的本金', cls(myRet)) +
+      metric('沪深300 同期', benchRet == null ? '—' : pct(benchRet, 2), '同一时间段的比较标准',
+        cls(benchRet || 0)) +
+      metric('比沪深300 多赚', benchRet == null ? '—' : pct(myRet - benchRet, 2),
+        '负数就是跑输了大盘', cls(myRet - (benchRet || 0))) +
+      metric('一共交易了几次', A.trades.length,
+        '买入 ' + A.trades.filter((t) => t.side === 'buy').length +
+        ' 次 / 卖出 ' + A.trades.filter((t) => t.side === 'sell').length + ' 次');
   }
 
   function maxDrawdown(arr) {
@@ -664,7 +668,7 @@
     A.side = s;
     $('sideBuy').className = s === 'buy' ? 'on buy' : '';
     $('sideSell').className = s === 'sell' ? 'on sell' : '';
-    $('tradeTitle').textContent = s === 'buy' ? '买入建仓' : '卖出平仓';
+    $('tradeTitle').textContent = s === 'buy' ? '记一笔买入' : '记一笔卖出';
     $('btnSubmit').className = 'btn block ' + (s === 'buy' ? 'buy' : 'sell');
     updateFeePreview();
   }
