@@ -2,11 +2,14 @@ name: 60周线预警
 
 on:
   schedule:
-    - cron: "5 2 * * 1-5"     # 北京 10:05 盘中扫描
-    - cron: "5 3 * * 1-5"     # 北京 11:05 盘中扫描
-    - cron: "5 6 * * 1-5"     # 北京 14:05 盘中扫描
-    - cron: "55 6 * * 1-5"    # 北京 14:55 尾盘扫描
-    - cron: "15 7 * * 1-5"    # 北京 15:15 收盘确认
+    # 交易时段冗余触发：每 10 分钟一个点，只覆盖有槽位的小时
+    # （UTC 02:05–03:55 = 北京 10:05–11:55；UTC 06:05–07:55 = 北京 14:05–15:55，共 24 点）。
+    # GitHub 会延迟数小时甚至丢弃 schedule 事件，故用冗余触发点覆盖；
+    # .github/scripts/slot_gate.py 再把它们收敛回五个目标槽位
+    # 10:05 / 11:05 / 14:05 / 14:55 / 15:15 —— 槽位全部落在网格上，
+    # 准点时零延迟命中，事件被丢弃时每个槽位仍有 3 个后续候补点兜底。
+    # 非命中点立即退出（约 10 秒），不安装依赖。
+    - cron: "5,15,25,35,45,55 2-3,6-7 * * 1-5"
     - cron: "7 8 * * 1-5"     # 北京 16:07 数据更新（避开整点负载高峰）
   workflow_dispatch:
     inputs:
@@ -35,18 +38,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 槽位闸门（定时触发时收敛到目标扫描时点）
+        id: gate
+        if: github.event_name == 'schedule' && github.event.schedule != '7 8 * * 1-5'
+        run: python3 .github/scripts/slot_gate.py
+
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run != 'false'
         with:
           python-version: "3.11"
           cache: pip
 
       - name: 安装依赖
+        if: steps.gate.outputs.run != 'false'
         run: |
           pip install -r requirements.txt
           sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
 
       - name: 交易日校验（非交易日自动跳过）
         id: day
+        if: steps.gate.outputs.run != 'false'
         run: |
           cd src
           python -m alert.run_alert --is-trading-day || echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -55,7 +66,7 @@ jobs:
       - name: 扫描并生成图表
         id: scan
         if: >-
-          steps.day.outputs.skip != 'true' &&
+          steps.day.outputs.skip != 'true' && steps.gate.outputs.run != 'false' &&
           (github.event_name == 'schedule' && github.event.schedule != '7 8 * * 1-5' ||
            github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
         run: |
@@ -88,6 +99,10 @@ jobs:
         run: |
           cd src
           python -m alert.run_alert --notify --sha "${{ steps.commit.outputs.sha }}"
+
+      - name: 标记槽位已执行（扫描成功才标记，失败留给下一个触发点重试）
+        if: steps.scan.conclusion == 'success'
+        run: python3 .github/scripts/slot_gate.py --mark "${{ steps.gate.outputs.slot }}"
 
       - name: 提交推送状态
         if: steps.scan.conclusion == 'success'
