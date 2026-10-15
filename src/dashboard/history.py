@@ -256,6 +256,43 @@ def rebuild(window_days: int = WINDOW_DAYS) -> tuple:
 # --------------------------------------------------------------------------
 # 二、追加：store/state/latest_triggers.json → 当日事件
 # --------------------------------------------------------------------------
+def _above_now(codes: set) -> dict:
+    """append 模式的 above 复算（BUG #14）。
+
+    旧实现把 above 硬编码为 True（触发即站上），但盘中触发的股票收盘
+    可能跌回 60 周线下方，历史页「仍站上」计数会虚高。这里用 store 周线仓
+    重算各标的截至上周的 60 周线，与 store/last_quotes.csv 的最新价比较。
+    算不出的标的保持 True（触发时刻站上）——不引入新的失败模式。
+    """
+    out: dict[str, bool] = {}
+    codes = {c for c in codes if c}
+    if not codes:
+        return out
+    try:
+        from alert.cloud_store import load_weekly
+        wk = load_weekly()
+        px: dict[str, float] = {}
+        lq_path = STORE / "last_quotes.csv"
+        if lq_path.exists():
+            lq = pd.read_csv(lq_path, dtype={"code": str})
+            px = dict(zip(lq["code"], pd.to_numeric(lq["price"], errors="coerce")))
+        today = pd.Timestamp(_now().date())
+        cutoff = today - pd.Timedelta(days=today.weekday())      # 本周一（未完成周剔除）
+        for c in codes:
+            g = wk[wk["code"] == c]
+            if g.empty:
+                continue
+            closes = g[pd.to_datetime(g["week_end"]) < cutoff]["close"].astype(float)
+            if len(closes) < MA_WEEKS:
+                continue
+            p = px.get(c)
+            if p is not None and p > 0:
+                out[c] = bool(p >= float(closes.tail(MA_WEEKS).mean()))
+    except Exception:  # noqa: BLE001
+        return out
+    return out
+
+
 def from_latest() -> tuple:
     """取最近一次扫描的触发清单（云端唯一可用的来源）。"""
     latest = _read_json(STATE / "latest_triggers.json", {}) or {}
@@ -263,6 +300,7 @@ def from_latest() -> tuple:
     if not day or not rows:
         return [], {}
     events, states = [], {}
+    above_map = _above_now({r.get("code") for r in rows})
     for r in rows:
         c = r.get("code")
         if not c:
@@ -278,7 +316,7 @@ def from_latest() -> tuple:
         })
         states[c] = {
             "dev_now": round(float(dev), 3) if dev is not None else None,
-            "above": True,                       # 触发即站上 60 周线
+            "above": above_map.get(c, True),     # 复算不出时保持触发时刻状态
             "mv": r.get("mv_float_yi"),
         }
     return events, states
@@ -344,8 +382,11 @@ def build(window_days: int = WINDOW_DAYS, out: Path | None = None) -> dict:
     else:
         end, start = "", ""
 
-    all_st = dict(states)
-    all_st.update(app_st)
+    # 状态合并：**重算优先**。重算状态（_scan_file）含 hx_now/recent，
+    # dev_now/above/ret 都能算准；append 状态只是触发时刻的近似值。
+    # 旧实现 app_st 覆盖 states，会把重算好的 ret/dev_now 降级成触发时点值。
+    all_st = dict(app_st)
+    all_st.update(states)
 
     # 价格换算为前复权（看盘口径）；同时留下后复权值供收益计算
     for e in evs:

@@ -57,6 +57,19 @@ def _push_enabled() -> bool:
         return True
 
 
+def _daily_limit() -> int:
+    """每日推送额度（BUG #11：与 pusher 同源读 config，不再硬编码 5）。
+
+    Server酱免费额度若变更，改 config 的 serverchan.daily_limit 即可，
+    看板额度条自动跟随。
+    """
+    try:
+        from alert.config import load
+        return int((load().get("serverchan") or {}).get("daily_limit", 5))
+    except Exception:                                         # noqa: BLE001
+        return 5
+
+
 def _read_json(p: Path, default=None):
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -541,7 +554,10 @@ def build_data(static_obj: dict | None = None) -> dict:
             "count": len(latest.get("rows", [])),
             "rows": latest.get("rows", []),
         },
-        "push": {"date": push.get("date", ""), "count": int(push.get("count", 0)), "limit": 5,
+        "push": {"date": push.get("date", ""), "count": int(push.get("count", 0)),
+                 # 额度从 config 读取（BUG #11：Server酱免费额度若变更，
+                 # 改 config/serverchan.daily_limit 即可，界面自动跟随）
+                 "limit": _daily_limit(),
                  # 总开关：关掉后界面会显示「推送已停用」，避免被误当成系统故障
                  "enabled": _push_enabled()},
         "trend": trend,

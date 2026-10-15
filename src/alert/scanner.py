@@ -74,9 +74,10 @@ def _verify_exdiv(df: pd.DataFrame) -> pd.DataFrame:
         if abs(real - pre) / pre <= 0.001:
             kept.append(r)                         # 昨收一致，无需修正
             continue
-        factor = float(r["hfq_last_close"]) / real
+        prev_hfq = float(r.get("hfq_prev_used", r["hfq_last_close"]))
+        factor = prev_hfq / real
         price_hfq = float(r["price"]) * factor
-        if not (float(r["hfq_last_close"]) < float(r["ma60_prev"]) <= price_hfq):
+        if not (prev_hfq < float(r["ma60_prev"]) <= price_hfq):
             print(f"[scanner] {code} 除权日复核：昨收 {pre} 与真实昨收 {real} 不符，"
                   f"重算后未触发 → 剔除（原偏离 {float(r['dev_pct'])*100:+.2f}%）")
             continue
@@ -110,7 +111,62 @@ def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
     """
     df = snapshot.join(quotes, how="inner")
     df = df[(df["preclose"] > 0) & (df["price"] > 0) & (df["ma60_prev"] > 0)].copy()
-    df["factor"] = df["hfq_last_close"] / df["preclose"]
+
+    # ---- 停牌冻结行情过滤（BUG #6）----
+    # 长期停牌股的行情接口仍返回价量 > 0 的冻结数据，且 **ts 也是当天时间戳**
+    # （实测 sh.600825 停牌 3 天，ts 仍是 2026-10-15）——「ts 落后」判据对
+    # A 股行情源无效（期货源才有真实 ts）。主判据用**当日成交额 = 0**：
+    # 停牌股 price == preclose、amount_wan = 0、turnover = 0（实测确认）。
+    # 价格不动而 MA60 每周下移时，停牌股可能「被动上穿」→ 无法交易的假触发。
+    # 期货模块早有等价机制（RT_MAX_LAG_DAYS），A 股此前缺失。
+    if "ts" in df.columns and len(df):
+        qday = pd.to_datetime(df["ts"].astype(str).str.slice(0, 8),
+                              format="%Y%m%d", errors="coerce")
+        mday = qday.max()
+        if pd.notna(mday):
+            lag = np.array([np.busday_count(d.date(), mday.date())
+                            if pd.notna(d) else 0 for d in qday], dtype=int)
+        else:
+            lag = np.zeros(len(df), dtype=int)
+        # 成交额判停牌：行情源异常时（全场 amount=0）不启用，防止误杀全市场
+        amt = pd.to_numeric(df.get("amount_wan"), errors="coerce")
+        active = ((amt > 0) | amt.isna()).mean() if len(df) else 0.0
+        frozen = amt.fillna(0) <= 0 if active >= 0.5 else pd.Series(False, index=df.index)
+        drop = (lag >= 2) | frozen.to_numpy()
+        n_frozen = int(drop.sum())
+        if n_frozen:
+            print(f"[scanner] 停牌过滤：{n_frozen} 只当日无成交或行情落后 ≥2 个交易日，"
+                  "已剔除（冻结行情可能造成无法交易的假触发）")
+            df = df[~drop]
+
+    # ---- 复权因子的日期配对（BUG #4）----
+    # 正常生产流程：日线仓停在昨日（D-1），行情「昨收」= D-1 收盘，
+    # factor = hfq(D-1) / raw(D-1) 天然同日配对。
+    # 但 16:07 更新后手动 force 补跑时，日线已含当日 D：hfq_last_close=D 收盘、
+    # preclose=D-1 收盘 → factor 被抬高约当日涨幅（实测凌晨非常态 20 只触发
+    # 中 3 只为错位假触发）。修正：错位时改用快照的前一日后复权收盘
+    # （hfq_prev_close）配对，prev_below 判定同步用前一日的值。
+    if "ts" in df.columns and len(df):
+        qday = pd.to_datetime(df["ts"].astype(str).str.slice(0, 8),
+                              format="%Y%m%d", errors="coerce")
+    else:
+        qday = pd.Series(pd.NaT, index=df.index)
+    sday = pd.to_datetime(df["last_date"], errors="coerce")
+    aligned = (sday < qday) | qday.isna() | sday.isna()
+    misaligned = int((~aligned).sum())
+    if misaligned and "hfq_prev_close" in df.columns:
+        print(f"[scanner] {misaligned} 只快照与行情同日（16:07 更新后补跑场景），"
+              "改用前一日后复权收盘配对因子")
+        prev_hfq = np.where(aligned, df["hfq_last_close"],
+                            df["hfq_prev_close"].fillna(df["hfq_last_close"]))
+        df["hfq_prev_used"] = prev_hfq
+    else:
+        if misaligned:
+            print(f"[scanner][警告] {misaligned} 只快照与行情同日但快照无前日收盘列"
+                  "（旧快照），因子可能含当日涨跌幅偏差——建议重建快照")
+        df["hfq_prev_used"] = df["hfq_last_close"]
+
+    df["factor"] = df["hfq_prev_used"] / df["preclose"]
     # 因子异常（如盘中除权除息、数据错位）直接剔除，宁漏勿错
     df = df[(df["factor"] > 0.01) & (df["factor"] < 100)]
     df["price_hfq"] = df["price"] * df["factor"]
@@ -119,7 +175,7 @@ def evaluate(snapshot: pd.DataFrame, quotes: pd.DataFrame,
     with np.errstate(all="ignore"):
         df["amt_ratio"] = df["amount_wan"] * 1e4 / df["avg_amt20"]
 
-    prev_below = df["hfq_last_close"] < df["ma60_prev"]
+    prev_below = df["hfq_prev_used"] < df["ma60_prev"]
     now_above = df["price_hfq"] >= df["ma60_prev"]
     df = df[prev_below & now_above].copy()
 

@@ -42,17 +42,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 槽位闸门（收敛到目标扫描时点，多调度源去重）
+      - name: 轮次闸门（扫描槽位收敛 + 更新幂等 + 多调度源去重）
         id: gate
-        # 外部定时服务（cron-job.org 等）走的是 workflow_dispatch，也必须过闸门：
-        # 它可能与本机定时任务在同一分钟触发，不去重就会重复扫描两遍。
-        # 闸门本身幂等（每个槽位每天只放行一次，谁先到谁跑），多一个调度源无害。
-        # 手动补跑用 -f task=scan -f force=true 绕过闸门。
-        if: >-
-          github.event.inputs.force != 'true' &&
-          ((github.event_name == 'schedule' && github.event.schedule != '7 8 * * 1-5') ||
-           github.event.inputs.task == 'scan' || github.event.inputs.task == 'confirm')
-        run: python3 .github/scripts/slot_gate.py
+        # 所有轮次（scan/confirm/update/demo）统一过闸门：
+        #  - 扫描轮：收敛到五个槽位，多调度源按「槽位+当日已执行」去重；
+        #  - 更新轮：同一交易日只放行一次（外接定时服务接管后与 GitHub cron
+        #    双触发，重复跑全市场增量有触发 baostock 黑名单的风险）；
+        #  - 演示轮：显式输出 run=na，不依赖「空字符串恰好不等于 false」。
+        # 手动补跑用 -f force=true 绕过闸门。
+        if: github.event.inputs.force != 'true'
+        run: |
+          TASK="${{ github.event.inputs.task }}"
+          if [ -z "$TASK" ]; then
+            if [ "${{ github.event.schedule }}" = "7 8 * * 1-5" ]; then TASK=update; else TASK=scan; fi
+          fi
+          python3 .github/scripts/slot_gate.py --task "$TASK"
 
       - uses: actions/setup-python@v5
         if: steps.gate.outputs.run != 'false'
@@ -66,12 +70,27 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
 
-      - name: 交易日校验（非交易日自动跳过）
+      - name: 交易日校验（非交易日自动跳过；接口故障必须显式失败）
         id: day
+        # BUG #3 修复：正常退出码只有 0（交易日）与 42（非交易日）。
+        # 其他非零（网络故障、行情接口异常）不能落进 || 分支被当成
+        # 「非交易日」静默跳过全天扫描 —— 必须显式失败，让 run 可见。
         if: steps.gate.outputs.run != 'false'
         run: |
           cd src
-          python -m alert.run_alert --is-trading-day || echo "skip=true" >> "$GITHUB_OUTPUT"
+          set +e
+          python -m alert.run_alert --is-trading-day
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "交易日，继续"
+          elif [ "$rc" -eq 42 ]; then
+            echo "非交易日，跳过本轮"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "交易日校验异常退出（码 $rc）→ 判为失败中止本轮（不可静默跳过）" >&2
+            exit "$rc"
+          fi
 
       # ---------------- 盘中扫描 / 收盘确认 ----------------
       - name: 扫描并生成图表
@@ -144,15 +163,21 @@ jobs:
           bash .github/scripts/push.sh
 
       # ---------------- 每日数据更新 ----------------
-      - name: 更新数据仓
-        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
+      - name: 更新数据仓（同日幂等：gate 判定，成功后打标）
+        if: >-
+          steps.day.outputs.skip != 'true' && steps.gate.outputs.run != 'false' &&
+          (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
         run: |
           cd src
           python -m alert.run_alert --update-cloud
           python -m dashboard.build --names --weekly
+          # 更新成功才打标（失败留给下一个触发点重试，与扫描槽位同纪律）
+          python3 ../.github/scripts/slot_gate.py --mark-update
 
       - name: 清理过期图表（只保留最近 14 个交易日）
-        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
+        if: >-
+          steps.day.outputs.skip != 'true' && steps.gate.outputs.run != 'false' &&
+          (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
         run: |
           cd charts 2>/dev/null || exit 0
           ls -1d */ 2>/dev/null | sort | head -n -14 | while read d; do
@@ -160,7 +185,9 @@ jobs:
           done
 
       - name: 提交数据仓与看板
-        if: steps.day.outputs.skip != 'true' && (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
+        if: >-
+          steps.day.outputs.skip != 'true' && steps.gate.outputs.run != 'false' &&
+          (github.event_name == 'schedule' && github.event.schedule == '7 8 * * 1-5' || github.event.inputs.task == 'update')
         run: |
           cd "$GITHUB_WORKSPACE"
           git config user.name "github-actions[bot]"

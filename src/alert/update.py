@@ -72,3 +72,57 @@ def update_recent(codes: list[str] | None = None, workers: int = 16) -> pd.DataF
               f"baostock 限流/无数据），需人工核查或转腾讯源重建："
               f"{stale['code'].tolist()[:20]}" + (" ..." if len(stale) > 20 else ""))
     return res
+
+
+def update_benchmark() -> bool:
+    """沪深300 基准日线增量（BUG #10）。
+
+    data/benchmark/hs300.csv.gz 原本只在一次性建库脚本里生成，日常更新
+    链路不碰它 → 基准停在 2026-10-13 而日线已到 10-15，近一月库窗口
+    被截短、研究管线的超额计算也用旧基准。本函数在每个更新轮追加增量。
+    data/ 不入 git：云端没有这个文件（云端日历走 store 周线并集），
+    只服务本机的研究管线与日历兜底。
+    """
+    p = ROOT / "data" / "benchmark" / "hs300.csv.gz"
+    cols = ["date", "open", "high", "low", "close", "volume", "amount", "pctChg"]
+    try:
+        datasource.patch_baostock_io(45.0)
+        import baostock as bs
+        lg = bs.login()
+        if lg.error_code != "0":
+            print(f"[update] 基准更新失败：baostock 登录失败（{lg.error_msg}）")
+            return False
+        try:
+            if p.exists():
+                df = pd.read_csv(p, parse_dates=["date"])
+                last = df["date"].max()
+            else:
+                df, last = None, pd.Timestamp("2005-01-04")
+            if (pd.Timestamp(date.today()) - last).days <= 1:
+                return True                       # 已新鲜
+            start = (last - timedelta(days=10)).strftime("%Y-%m-%d")
+            rs = bs.query_history_k_data_plus(
+                "sh.000300", ",".join(cols), start_date=start, end_date="",
+                frequency="d", adjustflag="3")
+            rows = []
+            while rs.next():
+                rows.append(rs.get_row_data())
+            if not rows:
+                print("[update] 基准更新：无新数据返回（可能限流），沿用旧基准")
+                return False
+            new = pd.DataFrame(rows, columns=cols)
+            for c in cols[1:]:
+                new[c] = pd.to_numeric(new[c], errors="coerce")
+            new["date"] = pd.to_datetime(new["date"])
+            merged = (new if df is None
+                      else pd.concat([df, new]).drop_duplicates("date").sort_values("date"))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            merged.to_csv(p, index=False, compression="gzip")
+            print(f"[update] 沪深300基准已更新至 {merged['date'].max().date()}"
+                  f"（新增 {len(new)} 行）")
+            return True
+        finally:
+            bs.logout()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[update] 基准更新失败（不影响日线主链路）：{type(exc).__name__} {exc}")
+        return False

@@ -431,10 +431,15 @@ def _tencent_one(code: str, weeks: int = TX_WEEKS):
             # 腾讯 K 线成交量单位为「手」；成交额按 (O+C+H+L)/4 近似 VWAP 估算
             amt = float((dd["volume"] * 100.0 * vwap).mean())
         last = w.iloc[-1]
+        # last_date 取日线最后一根的日期（真实行情日）。原实现取周线最后一根
+        # （含未完成周 = 抓取当天），会让 update 的 todo 判定把它多放行一天
+        # （BUG #9：极端时序下晚一天更新，无数据错误但拖慢）
+        last_date = (pd.Timestamp(d["date"].max()).normalize() if len(d)
+                     else pd.Timestamp(last["date"]).normalize())
         return code, {
             "weekly": w,
             "last_close": float(last["close"]),
-            "last_date": pd.Timestamp(last["date"]).normalize(),
+            "last_date": last_date,
             "avg_amt20": amt,
         }
     except Exception:  # noqa: BLE001
@@ -666,6 +671,9 @@ def update_from_baostock(workers: int = 16, budget_sec: int = 6600,
 
         lc = df.iloc[-1]
         last_rows.append({"code": code, "hfq_last_close": float(lc["close"]),
+                          # 前日后复权收盘：scanner 因子日期配对用（BUG #4）
+                          "hfq_prev_close": (float(df["close"].iloc[-2])
+                                             if len(df) >= 2 else np.nan),
                           "last_date": lc["date"]})
         amt_rows.append({"code": code, "avg_amt20": float(df["amount"].tail(20).mean())})
 
@@ -746,6 +754,9 @@ def build_snapshot_from_store() -> pd.DataFrame:
         if code in last.index:
             r["hfq_last_close"] = float(last.at[code, "hfq_last_close"])
             r["last_date"] = pd.Timestamp(last.at[code, "last_date"]).strftime("%Y-%m-%d")
+            if "hfq_prev_close" in last.columns:
+                v = last.at[code, "hfq_prev_close"]
+                r["hfq_prev_close"] = float(v) if pd.notna(v) else np.nan
         else:
             continue
         r["avg_amt20"] = float(amt.get(code, np.nan))

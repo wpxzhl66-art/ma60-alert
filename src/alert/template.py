@@ -47,9 +47,11 @@ def risk_level(amt_ratio, turnover) -> tuple[str, str]:
     hot = (a is not None and a >= 2.5) or (t is not None and t >= 5)
     calm = a is not None and a < 1.0 and t is not None and t < 2
     if hot:
-        return ("放量追高", "历史上这一档掉队最明显")
+        # 标签与看板 app.js riskLevel() 统一用白话（BUG #12），
+        # 括号里保留原术语便于与回测报告对照
+        return ("涨得猛", "历史上这一档掉队最明显（放量追高）")
     if calm:
-        return ("缩量温和", "历史上这一档相对温和")
+        return ("跌得慢", "历史上这一档相对温和（缩量温和）")
     return ("", "")
 
 

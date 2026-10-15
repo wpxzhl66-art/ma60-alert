@@ -25,6 +25,8 @@ WINDOW_MIN = 30       # 槽位到点后 30 分钟内到达都算命中，用于�
 CLOSE_MIN = 15 * 60   # 收盘线（15:00）：此后执行的扫描一律按「收盘确认」处理
 KEEP_DAYS = 45        # 标记文件保留天数
 MARKS = Path(__file__).resolve().parents[2] / "store" / "state" / "slot_marks.json"
+UPDATE_MARKS = (Path(__file__).resolve().parents[2] / "store" / "state"
+                / "update_marks.json")
 
 
 def _now() -> datetime:
@@ -107,6 +109,14 @@ def _decide_slot() -> tuple[str, int, bool]:
     return "", 0, False
 
 
+def _emit(out: dict) -> None:
+    out_path = os.environ.get("GITHUB_OUTPUT")
+    if out_path and out_path != os.devnull:
+        with open(out_path, "a", encoding="utf-8") as fh:
+            for k, v in out.items():
+                fh.write(f"{k}={v}\n")
+
+
 def decide() -> None:
     now = _now()
     now_m = now.hour * 60 + now.minute
@@ -114,12 +124,7 @@ def decide() -> None:
     # 模式按**实际执行时间**定，而不是按槽位名 —— 延迟到收盘后执行就该算收盘确认，
     # 否则晚上补扫出来的数据会被标成「盘中」，语义是错的。
     mode = "confirm" if now_m >= CLOSE_MIN else "intraday"
-    out_path = os.environ.get("GITHUB_OUTPUT")
-    if out_path and out_path != os.devnull:
-        with open(out_path, "a", encoding="utf-8") as fh:
-            fh.write(f"run={'true' if slot else 'false'}\n")
-            fh.write(f"slot={slot}\n")
-            fh.write(f"mode={mode}\n")
+    _emit({"run": "true" if slot else "false", "slot": slot, "mode": mode})
     if slot:
         tail = (f"命中槽位 {slot}（延迟 {delay} 分钟"
                 + ("，迟补" if late else "") + f"）→ 模式 {mode}")
@@ -128,12 +133,71 @@ def decide() -> None:
     print(f"[gate] 北京 {now:%H:%M} → {tail}", file=sys.stderr)
 
 
+def decide_update() -> None:
+    """16:07 数据更新轮的幂等闸门（BUG #2）。
+
+    外接定时服务（cron-job.org）接管 16:07 后会与 GitHub cron 双触发；
+    update 轮是全市场增量更新（约 1.5h 预算、5000+ 请求），重复跑有触发
+    baostock 黑名单的风险。标记文件 store/state/update_marks.json 在
+    更新**成功后**由 --mark-update 写入（随 store/ 一起提交），谁先跑完
+    谁打标，后到者看到当日标记立即退出。
+    """
+    now = _now()
+    today = now.strftime("%Y-%m-%d")
+    try:
+        marks = json.loads(UPDATE_MARKS.read_text(encoding="utf-8"))
+        marks = marks if isinstance(marks, dict) else {}
+    except (OSError, ValueError):
+        marks = {}
+    already = marks.get(today)
+    _emit({"run": "false" if already else "true", "task": "update"})
+    if already:
+        print(f"[gate] update 轮：今日 {today} 已更新过（{already}），跳过",
+              file=sys.stderr)
+    else:
+        print(f"[gate] update 轮：今日 {today} 尚未更新，放行", file=sys.stderr)
+
+
+def mark_update() -> None:
+    """标记今日数据更新已完成（成功后才调用）。"""
+    now = _now()
+    today = now.strftime("%Y-%m-%d")
+    try:
+        marks = json.loads(UPDATE_MARKS.read_text(encoding="utf-8"))
+        marks = marks if isinstance(marks, dict) else {}
+    except (OSError, ValueError):
+        marks = {}
+    cutoff = (now - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%d")
+    marks = {d: v for d, v in marks.items() if str(d) >= cutoff}
+    marks[today] = now.strftime("%H:%M")
+    UPDATE_MARKS.parent.mkdir(parents=True, exist_ok=True)
+    UPDATE_MARKS.write_text(
+        json.dumps(marks, ensure_ascii=False, indent=1, sort_keys=True),
+        encoding="utf-8")
+    print(f"[gate] 已标记今日数据更新完成 @ {today} {marks[today]}", file=sys.stderr)
+
+
 def main() -> None:
+    if "--mark-update" in sys.argv:
+        mark_update()
+        return
     if "--mark" in sys.argv:
         idx = sys.argv.index("--mark")
         mark(sys.argv[idx + 1] if len(sys.argv) > idx + 1 else "")
         return
-    decide()
+    task = "scan"
+    if "--task" in sys.argv:
+        idx = sys.argv.index("--task")
+        task = sys.argv[idx + 1] if len(sys.argv) > idx + 1 else "scan"
+    if task == "update":
+        decide_update()
+    elif task == "demo":
+        # 演示轮不设闸门，但**显式**输出 run=na：后续步骤不再依赖
+        # 「闸门被跳过时输出恰好为空字符串」的脆弱语义（BUG #5）
+        _emit({"run": "na", "slot": "", "mode": ""})
+        print("[gate] demo 轮：不设闸门（run=na）", file=sys.stderr)
+    else:
+        decide()
 
 
 if __name__ == "__main__":

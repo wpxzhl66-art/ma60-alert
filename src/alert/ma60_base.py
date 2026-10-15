@@ -117,7 +117,11 @@ def build_snapshot(progress: bool = True) -> pd.DataFrame:
         d20 = df.sort_values("date").tail(20)
         r["avg_amt20"] = (float(d20["amount"].mean())
                           if "amount" in d20.columns else np.nan)
-        r["hfq_last_close"] = float(df.sort_values("date").iloc[-1]["close"])
+        ds = df.sort_values("date")
+        r["hfq_last_close"] = float(ds.iloc[-1]["close"])
+        # 前一日后复权收盘：快照与行情同日（16:07 更新后 force 补跑）时，
+        # scanner 用它重新配对复权因子（BUG #4，见 evaluate 的注释）
+        r["hfq_prev_close"] = float(ds.iloc[-2]["close"]) if len(ds) >= 2 else np.nan
         r["last_date"] = df["date"].max().strftime("%Y-%m-%d")
         r["industry"] = ind_map.get(code, "未知")
         r.pop("weekly_closes")

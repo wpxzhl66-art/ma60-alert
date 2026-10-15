@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -59,6 +60,32 @@ def _store_weekly_map():
     return {c: g.set_index("week_end")["close"] for c, g in wk.groupby("code")}
 
 
+def _snapshot_behind(snap) -> bool:
+    """快照是否落后于本地日线（BUG #7）。
+
+    快照缓存 3 天：某只股票的数据被修复后（如双汇 10-15 补齐），若当日
+    update 轮没跑，次日扫描仍用旧快照判定（坏 MA60 → 假触发）。用几只
+    流动性主板股的日线最新日期做探针，快照比它们旧就强制重建（约 2~4 分钟）。
+    """
+    import pandas as pd
+    try:
+        if snap is None or "last_date" not in getattr(snap, "columns", []):
+            return False
+        snap_max = pd.to_datetime(snap["last_date"], errors="coerce").max()
+        if pd.isna(snap_max):
+            return False
+        for name in ("sh_600000", "sz_000001", "sh_601318"):
+            f = ROOT / "data" / "daily" / f"{name}.csv.gz"
+            if not f.exists():
+                continue
+            d = pd.read_csv(f, usecols=["date"], parse_dates=["date"])
+            if len(d) and d["date"].max() > snap_max:
+                return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def _get_snapshot(force: bool = False, cloud: bool = False):
     if cloud:
         from .cloud_store import build_snapshot_from_store
@@ -66,6 +93,9 @@ def _get_snapshot(force: bool = False, cloud: bool = False):
         print(f"[snapshot] 云端仓快照：{len(snap)} 只")
         return snap
     snap = None if force else load_snapshot()
+    if snap is not None and _snapshot_behind(snap):
+        print("[snapshot] 本地日线比快照新（数据修复后未重建）→ 强制重建")
+        snap = None
     if snap is None:
         print("[snapshot] 缓存缺失或过期，重建中（约 2~4 分钟）...")
         snap = build_snapshot()
@@ -104,9 +134,12 @@ def run_scan(mode: str = "intraday", push: bool = True, force_snapshot: bool = F
 
 
 def run_update():
-    from .update import update_recent
+    from .update import update_benchmark, update_recent
     res = update_recent()
     print(res["status"].value_counts().to_dict())
+    # 沪深300 基准日线增量（BUG #10）：研究管线的超额计算与近一月库日历
+    # 兜底都读它。失败不影响日线主链路（基准滞后只是研究口径偏差）。
+    update_benchmark()
     print("[snapshot] 重建快照...")
     build_snapshot()
     print("[update] 完成")
@@ -283,7 +316,10 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
     PENDING.write_text(json.dumps(result, ensure_ascii=False, indent=1),
                        encoding="utf-8")
     print(f"[prepare] {result['n']} 只待推，图表 {len(result['charts'])} 张 → {PENDING}")
-    if not demo:
+    # 测试扫描隔离（BUG #13）：本机做开发验证时设 ALERT_TEST=1，
+    # 不往看板状态/趋势流水里写「盘中扫描」记录（历史上混进过
+    # 2026-10-14 收盘后的三轮测试扫描，趋势图失真）。
+    if not demo and os.environ.get("ALERT_TEST") != "1":
         _record_dashboard_state(len(trig_all), trig_all if len(trig_all) else None,
                                 len(snap), "demo" if demo else mode, quotes)
         # 期货加权指数的当日触发（独立板块，共用推送额度）
@@ -292,6 +328,8 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
             fut_alert.record_state()
         except Exception as exc:  # noqa: BLE001
             print(f"[fut] 状态记录失败: {type(exc).__name__} {exc}")
+    elif os.environ.get("ALERT_TEST") == "1":
+        print("[prepare] ALERT_TEST=1 → 跳过看板状态记录（测试扫描不入流水）")
 
 
 def run_notify(sha: str):

@@ -100,8 +100,14 @@ def record_state() -> dict:
 
 
 def _fmt(v: float) -> str:
+    """期货价格式化：≥1000 取整、<100 保留 3 位、其余 2 位（原三段式
+    条件表达式可读性差，拆成普通分支，行为不变）。"""
     a = abs(v)
-    return f"{v:,.{0 if a >= 1000 else 2}f}" if a >= 1000 else f"{v:,.{3 if a < 100 else 2}f}"
+    if a >= 1000:
+        return f"{v:,.0f}"
+    if a < 100:
+        return f"{v:,.3f}"
+    return f"{v:,.2f}"
 
 
 def _line(r: dict) -> str:
