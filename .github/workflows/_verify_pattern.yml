@@ -1,0 +1,44 @@
+name: 临时验证·云端形态扫描
+
+# 用途：在云端真实运行 pattern.store_scan（读 store/daily 分片仓），
+# 验证「电脑关机也能扫形态」这条链路端到端可用。
+# 只读——不推送、不提交任何产物。验证通过后本文件即删除。
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TZ: Asia/Shanghai
+      PYTHONPATH: ${{ github.workspace }}/src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 分片仓体检
+        run: |
+          cd src
+          python - <<'PY'
+          from alert.cloud_store import daily_shards, load_daily_recent
+          sh = daily_shards()
+          print(f"分片数：{len(sh)}  首片 {sh[0].stem}  末片 {sh[-1].stem}")
+          d = load_daily_recent()
+          print(f"载入 {len(d)} 行 / {d['code'].nunique()} 只 / "
+                f"{d['date'].min().date()} ~ {d['date'].max().date()}")
+          print(f"内存占用 {d.memory_usage(deep=True).sum()/1e6:.0f} MB")
+          PY
+
+      - name: 形态扫描（只读，不提交不推送）
+        run: |
+          cd src
+          time python -m pattern.store_scan --no-build
