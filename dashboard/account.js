@@ -1,6 +1,6 @@
 /* ============================================================
    60周线预警台 · 模拟资金账户
-   - 登录：WorkBuddy 账号 / 微信 / 手机号验证码（WorkBuddy 云服务）
+   - 登录：手机号验证码（WorkBuddy 云服务；WorkBuddy/微信登录已移除）
    - 账本：云端数据库，手机与电脑共用，行级权限按用户隔离
    - 费用：佣金万 2.5（最低 5 元）+ 卖出印花税千 1 + 过户费万 0.1
    - 规则：A 股 100 股整数倍、T+1（当日买入次日才可卖）
@@ -176,13 +176,7 @@
           '用来自动记录你在 60 周线信号上的每一笔买卖，实时算出持仓成本、浮动盈亏、' +
           '收益率与最大回撤，并把买卖点标在周 K 图上。' +
         '</div>' +
-        '<button class="btn block" id="btnWb">使用 WorkBuddy 登录</button>' +
-        '<div style="height:10px"></div>' +
-        '<div class="btn-row">' +
-          '<button class="btn sec" id="btnWx" style="flex:1">微信登录</button>' +
-          '<button class="btn sec" id="btnPhone" style="flex:1">手机号验证码</button>' +
-        '</div>' +
-        '<div id="phoneForm" style="display:none;margin-top:14px">' +
+        '<div id="phoneForm">' +
           '<div class="field"><label>手机号</label>' +
             '<input id="fPhone" type="tel" inputmode="numeric" maxlength="11" placeholder="11 位手机号"></div>' +
           '<div class="field"><label>验证码</label>' +
@@ -197,36 +191,14 @@
         '<div id="loginMsg"></div>' +
       '</div></div>';
 
-    $('btnWb').addEventListener('click', signInWorkBuddy);
-    $('btnWx').addEventListener('click', signInWechat);
-    $('btnPhone').addEventListener('click', () => {
-      const f = $('phoneForm');
-      f.style.display = f.style.display === 'none' ? '' : 'none';
-    });
     $('btnSendCode').addEventListener('click', sendPhoneCode);
     $('btnDoPhone').addEventListener('click', submitPhoneLogin);
     $('fPhone').addEventListener('input', () => { $('phoneErr').textContent = ''; });
   }
 
   /* ------------------------------------------------ 登录动作 */
-  async function signInWorkBuddy() {
-    const back = new URL(location.href);
-    back.pathname = '/';
-    for (const k of ['code', 'state', 'provider']) back.searchParams.delete(k);
-    const { data, error } = await A.cloud.auth.signInWithOAuth({
-      provider: 'workbuddy', redirectTo: back.toString(),
-    });
-    if (error) return showLoginError(error.message);
-    location.assign(data.url);
-  }
-
-  async function signInWechat() {
-    const { data, error } = await A.cloud.auth.signInWithOAuth({
-      provider: 'wechat', redirectTo: location.origin,
-    });
-    if (error) return showLoginError(error.message);
-    location.assign(data.url);
-  }
+  // 仅保留手机号验证码登录（WorkBuddy / 微信登录已按需求移除，v1.10.2）。
+  // restoreAuth 里的 OAuth 回调处理保留：万一还有旧的回调链接进来，能优雅提示。
 
   let pendingOtp = null;
 
