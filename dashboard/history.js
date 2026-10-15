@@ -12,7 +12,7 @@
           loadJSON, fetchWeeklyOne, weeklyChartOption, ma } = C;
 
   // 交付物版本号：每次改动递增（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.12.1';
+  const APP_VERSION = 'v1.13.1';
 
   const S = {
     d: null,          // history.json

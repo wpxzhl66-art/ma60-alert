@@ -1,5 +1,5 @@
 /* ============================================================
-   AI 五维投资评价 · 配置（v1.13.0）
+   AI 五维投资评价 · 配置（v1.13.1 已填入 Key）
    ------------------------------------------------------------
    模型选型（我定的）：DeepSeek deepseek-chat
      —— OpenAI 兼容接口、中文财经语料理解好、按量计费便宜
@@ -20,5 +20,5 @@
 window.AI_CFG = {
   baseUrl: 'https://api.deepseek.com/chat/completions',
   model: 'deepseek-chat',
-  apiKey: '',   // ←←← 把你的 API Key 填到这两个引号之间
+  apiKey: 'sk-f1a4057ec6da401f9d1c95420213e7bf',   // 2026-10-16 填入（DeepSeek 测试 Key）
 };
