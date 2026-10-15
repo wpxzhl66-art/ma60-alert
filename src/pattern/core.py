@@ -25,6 +25,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -49,7 +51,27 @@ ZT_MAIN = 9.8             # 主板涨停判定线（%）
 ZT_GEM = 19.6             # 创业板 / 科创板涨停判定线（%）
 
 PRICE_MIN = 2.0           # 实盘剔除仙股（仅实盘用：仓库日线为后复权，价格不可比）
-MV_MIN_YI = 10.0          # 流通市值下限（亿元），回测与实盘通用
+# 流通市值区间（亿元），回测与实盘通用 —— 口径必须唯一，两份并存会悄悄漂移。
+# v1.10.0 起：10 亿下限放宽为 30~200 亿区间。小盘（<30 亿）易被资金操纵、
+# 反转形态多为脉冲；大盘（>200 亿）形态启动慢、弹性不足，都不适合本策略。
+MV_MIN_YI = 30.0
+MV_MAX_YI = 200.0
+
+# 名称风险标识（回测与实盘通用）：风险警示与退市类一律剔除。
+# ⚠️ 不能只判 "ST"：退市整理期的股票改名成「XX退」（如「元道退」），
+# 名称里没有 ST，只判 ST 会漏掉。
+RISK_NAME_PAT = re.compile(r"ST|退", re.IGNORECASE)
+
+
+def is_risk_name(name: str) -> bool:
+    """名称是否带风险标识：ST / *ST / 退市整理（「XX退」）等。"""
+    return bool(RISK_NAME_PAT.search(str(name or "")))
+
+
+def in_mv_range(mv: float) -> bool:
+    """流通市值是否落在策略区间内（亿元）。"""
+    return MV_MIN_YI <= float(mv) <= MV_MAX_YI
+
 
 
 def limit_pct(code: str) -> float:

@@ -36,6 +36,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pattern import core as pc                                    # noqa: E402
+from pattern import filters as pf                                 # noqa: E402
 from pattern.scan import OUT_DIR, STAGE_CODE, STAGE_NAME          # noqa: E402
 
 
@@ -88,6 +89,13 @@ def _judge(code: str, df: pd.DataFrame, snap: dict, snap_date: str) -> dict | No
     return {**d, "code": code, "stage": STAGE_CODE[d["stage"]], "estage": d["stage"]}
 
 
+def _brief(rec: dict) -> dict:
+    """剔除明细里保留的字段（够看板展示与人工复核即可，不塞整条记录）。"""
+    return {"code": rec.get("code"), "name": rec.get("name"),
+            "stage": rec.get("stage"), "price": rec.get("price"),
+            "chg": rec.get("chg"), "mv": rec.get("mv")}
+
+
 def scan(quiet: bool = False) -> dict:
     from alert.cloud_store import load_daily_recent
     from pattern.scan import fetch_snapshot, market_snapshot_date
@@ -117,6 +125,7 @@ def scan(quiet: bool = False) -> dict:
     codes = [c for c in q.index if c in codes_all and c in groups]
 
     rows: list[dict] = []
+    rejected: list[dict] = []          # 硬筛剔除明细（透明化：看板可展示「另有 N 只因…被剔除」）
     for c in codes:
         r = q.loc[c]
         rec = _judge(c, groups[c], r, snap_date)
@@ -129,14 +138,21 @@ def scan(quiet: bool = False) -> dict:
             "mv": round(float(r["mv_float_yi"]), 1),
             "name": str(r["name"]),
         })
-        if rec["mv"] < pc.MV_MIN_YI or "ST" in rec["name"].upper():
+        # 引擎级硬筛（回测与实盘同口径）：流通市值区间 + 风险名称（ST/*ST/退市）
+        whys = []
+        if not pc.in_mv_range(rec["mv"]):
+            side = "低于下限" if rec["mv"] < pc.MV_MIN_YI else "高于上限"
+            whys.append(f"流通市值 {rec['mv']:.0f}亿（{side} {pc.MV_MIN_YI:.0f}~{pc.MV_MAX_YI:.0f}亿）")
+        if pc.is_risk_name(rec["name"]):
+            whys.append("风险名称（ST/退市）")
+        if whys:
+            rejected.append({**_brief(rec), "why": "；".join(whys)})
             continue
         rec["industry"] = ind_map.get(c, "—")
         rec["zt"] = bool(rec.get("zt"))
         rows.append(rec)
 
     rows.sort(key=lambda r: ({"A": 0, "B": 1, "C": 2}[r["stage"]], -r["chg"]))
-    counts = {k: sum(1 for r in rows if r["stage"] == k) for k in ("A", "B", "C")}
 
     # 新鲜度体检：合成只能补一根，落后更多就会失真（本机踩过：丢一天致 A→C 错判）
     gap = int(np.busday_count(last_day.date(), pd.Timestamp(snap_date).date()))
@@ -148,9 +164,17 @@ def scan(quiet: bool = False) -> dict:
     else:
         lag = ""
 
+    # 实盘后置过滤：大额解禁 / 近期重大利空（仅实盘，回测用不了——见 filters 模块说明）
+    kept, dropped, fnote = pf.apply_and_report(rows, today=snap_date, quiet=quiet)
+    if fnote:
+        lag = f"{lag}（{fnote}）" if lag else f"（{fnote}）"
+    rows = kept
+    counts = {k: sum(1 for r in rows if r["stage"] == k) for k in ("A", "B", "C")}
+
     obj = {"day": snap_date, "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
            "snapshot_date": snap_date, "source": "cloud", "snap_synth": bool(synth_global),
-           "scanned": len(codes), "lag": lag, "counts": counts, "rows": rows}
+           "scanned": len(codes), "lag": lag, "counts": counts, "rows": rows,
+           "dropped": dropped, "rejected": rejected}
     if not quiet:
         print(f"[pattern] 云端快照 {snap_date} · 扫描 {len(codes)} 只 · "
               f"A 启动 {counts['A']} / B 洗盘 {counts['B']} / C 新突破 {counts['C']} {lag}")

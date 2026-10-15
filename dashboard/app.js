@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.9.0';
+  const APP_VERSION = 'v1.10.0';
 
   const S = {
     data: null,        // data.json
@@ -540,8 +540,10 @@
      数据由扫描写入 dashboard/pattern.json：本机（data/daily 全历史）与
      云端（store/daily 400 日分片）都能产出，判定共用 src/pattern/core.py，
      结果逐只一致。两者都离线时文件日期会变旧，页面据此提示「非当日」。
-     ⚠️ 定位（14 年全历史回测）：阶段④「启动日」介入后 60 日跑输全市场等权
-        8.41%（胜率 31.7%，16 个年份无一为正）；阶段③ −4.65%、阶段② −6.22%。
+     ⚠️ 定位（2010-01 起全历史回测）：阶段④「启动日」介入后 60 日跑输全市场等权
+        8.95%（胜率 31.3%，全部 15 个年份无一为正）；阶段③ −5.33%、阶段② −6.92%。
+        加入 30~200 亿市值筛选后结论**没有改善**（旧口径 −8.41%），这个筛除条件
+        只负责排除有风险与不可操作的标的，不会把信号变成正的。
         → 这是**追涨风险提示**，不是买入信号。改文案前先读
         store/pattern_backtest.json（入库版，云端也读得到）。 */
   function loadPattern() {
@@ -628,11 +630,11 @@
         '<div class="metric"><div class="k">刚突破前高（阶段②）</div>' +
           '<div class="v sm">' + (c.C || 0) + ' 只</div>' +
           '<div class="x">反转确认，等回踩</div></div>' +
-        '<div class="metric"><div class="k">信号性质（14 年回测）</div>' +
+        '<div class="metric"><div class="k">信号性质（全历史回测）</div>' +
           '<div class="v sm">追涨风险</div>' +
           '<div class="x">启动后 60 日跑输 ' +
-            Math.abs(e4.ex60_med || -8.41).toFixed(1) + '% · 胜率 ' +
-            (e4.ex60_win || 31.7).toFixed(1) + '%</div></div>' +
+            Math.abs(e4.ex60_med || -8.95).toFixed(1) + '% · 胜率 ' +
+            (e4.ex60_win || 31.3).toFixed(1) + '%</div></div>' +
       '</div>' +
       (stale ? '<div class="banner">形态扫描数据停在 ' + esc(d.day) +
         '（今日尚未扫描），下方名单不是今日结果。</div>' : '');
@@ -641,6 +643,10 @@
     ['A', 'B', 'C'].forEach(renderPatList);
 
     const pct1 = (v) => (v == null ? '—' : (Math.abs(v)).toFixed(1) + '%');
+    const f = d.filter || {};
+    const rej = d.rejected || [], dro = d.dropped || [];
+    const rejLine = (r) => '<li>' + esc(r.name) + ' <span class="code">' + esc(r.code) +
+      '</span> <span class="muted">' + esc(r.why || (r.drop_reason || []).join('；')) + '</span></li>';
     $('patNote').innerHTML =
       '<b>形态口径</b>（阈值集中在 <span class="code">src/pattern/core.py</span>，' +
       '回测与实盘共用同一份判定逻辑）：' +
@@ -648,16 +654,30 @@
       '② 突破＝创 60 日新高（突破本轮反弹前高，而非年线高点）；' +
       '③ 洗盘＝回踩 4%~20%、不少于 3 日、近 3 日不再破前一日 0.5%；' +
       '④ 启动＝涨停，或涨幅 ≥5% 且量比 ≥1.8，且收盘创回踩段新高。' +
+      '<br><b>筛除条件</b>（按此过滤，被排除的标的见下方明细）：' +
+      '① 排除 ST/*ST 与退市整理股（名称含 ST 或「退」）；' +
+      '② 流通市值 ' + (f.mv ? f.mv[0] + '~' + f.mv[1] : '30~200') + ' 亿；' +
+      '③ 未来 ' + (f.lift_days || 60) + ' 天内解禁市值 ≥ 当前流通市值 ' +
+        Math.round((f.lift_ratio || 0.15) * 100) + '% 的剔除；' +
+      '④ 近 ' + (f.news_days || 90) + ' 天公告命中重大利空' +
+        '（退市/立案/处罚/财务非标/债务违约/股权冻结/停产/业绩恶化）的剔除。' +
+      (rej.length + dro.length
+        ? '<details class="rej"><summary>本次已排除 ' + (rej.length + dro.length) +
+          ' 只（市值·名称 ' + rej.length + '，解禁·利空 ' + dro.length + '）</summary>' +
+          '<ul>' + [...dro, ...rej].map(rejLine).join('') + '</ul></details>'
+        : '') +
       '<br><b>数据链路</b>：本机（全历史日线）与云端（最近 400 交易日分片仓）' +
       '都会在收盘后扫描并提交仓库，判定逻辑同一份、结果一致；' +
       '本机离线时由云端兜底。' +
       (d.lag ? ' <b>数据提示</b>：' + esc(d.lag) : '') +
-      '<br><b>⚠️ 信号性质（14 年全历史回测）</b>：' +
+      '<br><b>⚠️ 信号性质（全历史回测 2010-01 起）</b>：' +
       '阶段④启动 ' + (e4.n || 0).toLocaleString() + ' 次 → 60 日超额中位 ' +
         pct1(e4.ex60_med) + '、胜率 ' + (e4.ex60_win || 0).toFixed(1) + '%；' +
       '阶段③ ' + (e3.n || 0).toLocaleString() + ' 次 → ' + pct1(e3.ex60_med) + '；' +
       '阶段② ' + (e2.n || 0).toLocaleString() + ' 次 → ' + pct1(e2.ex60_med) + '。' +
-      '三个阶段<b>全部为负超额，16 个年份无一为正</b>——' +
+      '三个阶段<b>全部为负超额，15 个年份无一为正</b>；' +
+      '加上市值与风险筛除后结论<b>没有改善</b>——筛除只负责排除有风险、' +
+      '不可操作的标的，不会把信号变成正的。' +
       '<b>本板块是追涨风险提示，不是买入信号</b>，按此形态在启动日追进历史上平均跑输市场。';
 
   }

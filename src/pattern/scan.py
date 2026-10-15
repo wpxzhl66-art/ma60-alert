@@ -30,6 +30,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pattern import core as pc                       # noqa: E402
+from pattern import filters as pf                     # noqa: E402
 
 DAILY = ROOT / "data" / "daily"
 OUT_DIR = ROOT / "output" / "pattern"
@@ -114,7 +115,7 @@ def load_prev_snapshot() -> tuple[str, dict]:
 
 def _one(job: tuple) -> dict | None:
     """单只标的：日线 + 缺口补齐 + 当日合成 K 线 → 判定最后一日所处阶段。"""
-    code, snap_date, snap, pmin, mvmin, prev = job
+    code, snap_date, snap, pmin, prev = job
     f = DAILY / f"{code.replace('.', '_')}.csv.gz"
     if not f.exists():
         return None
@@ -170,6 +171,13 @@ def _one(job: tuple) -> dict | None:
             "name": str(snap["name"])}
 
 
+def _brief(rec: dict) -> dict:
+    """剔除明细里保留的字段（够看板展示与人工复核即可，不塞整条记录）。"""
+    return {"code": rec.get("code"), "name": rec.get("name"),
+            "stage": rec.get("stage"), "price": rec.get("price"),
+            "chg": rec.get("chg"), "mv": rec.get("mv")}
+
+
 def scan(quiet: bool = False, workers: int = 8) -> dict:
     codes_all, ind_map = load_universe()
     q = fetch_snapshot(sorted(codes_all))
@@ -204,13 +212,20 @@ def scan(quiet: bool = False, workers: int = 8) -> dict:
         jobs.append((c, snap_date, {"chg_pct": r["chg_pct"], "amount_wan": r["amount_wan"],
                                     "price": r["price"], "turnover": r["turnover"],
                                     "mv_float_yi": r["mv_float_yi"], "name": r["name"]},
-                     pc.PRICE_MIN, pc.MV_MIN_YI, prev))
+                     pc.PRICE_MIN, prev))
     rows: list[dict] = []
+    rejected: list[dict] = []          # 硬筛剔除明细（透明化：看板可展示「另有 N 只因…被剔除」）
     with ProcessPoolExecutor(max_workers=workers) as ex:
         for rec in ex.map(_one, jobs, chunksize=40):
             if rec is None:
                 continue
-            if rec["mv"] < pc.MV_MIN_YI or "ST" in rec["name"].upper():
+            # 引擎级硬筛（回测与实盘同口径）：流通市值区间 + 风险名称（ST/*ST/退市）
+            if not pc.in_mv_range(rec["mv"]):
+                rejected.append({**_brief(rec),
+                                 "why": f"流通市值 {rec['mv']:.0f}亿（区间外）"})
+                continue
+            if pc.is_risk_name(rec["name"]):
+                rejected.append({**_brief(rec), "why": "风险名称（ST/退市）"})
                 continue
             rec["industry"] = ind_map.get(rec["code"], "—")
             rows.append(rec)
@@ -218,11 +233,17 @@ def scan(quiet: bool = False, workers: int = 8) -> dict:
     for r in rows:
         r["zt"] = bool(r.get("zt"))
     rows.sort(key=lambda r: ({"A": 0, "B": 1, "C": 2}[r["stage"]], -r["chg"]))
+
+    # 实盘后置过滤：大额解禁 / 近期重大利空（仅实盘，回测用不了——见 filters 模块说明）
+    kept, dropped, fnote = pf.apply_and_report(rows, today=snap_date, quiet=quiet)
+    if fnote:
+        lag = f"{lag}（{fnote}）" if lag else f"（{fnote}）"
+    rows = kept
     counts = {k: sum(1 for r in rows if r["stage"] == k) for k in ("A", "B", "C")}
     obj = {"day": snap_date, "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
            "snapshot_date": snap_date, "prev_snapshot": prev_day,
            "scanned": len(jobs), "lag": lag,
-           "counts": counts, "rows": rows}
+           "counts": counts, "rows": rows, "dropped": dropped, "rejected": rejected}
     if not quiet:
         print(f"[pattern] 快照 {snap_date} · 扫描 {len(jobs)} 只 · "
               f"A 启动 {counts['A']} / B 洗盘 {counts['B']} / C 新突破 {counts['C']} {lag}")

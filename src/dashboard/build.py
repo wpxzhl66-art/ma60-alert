@@ -422,6 +422,17 @@ def build_pattern() -> dict:
     src = ROOT / "output" / "pattern" / "latest.json"
     obj = _read_json(src, {}) or {}
     old = _read_json(OUT / "pattern.json", {}) or {}
+    # 筛选口径随数据一起落盘，前端不用硬编码数字。
+    # 导入失败时退回字面值——看板构建不该因为一个常量读不到就整块失败。
+    try:
+        from pattern import core as pc
+        from pattern import filters as pf
+        fmeta = {"mv": [pc.MV_MIN_YI, pc.MV_MAX_YI],
+                 "lift_days": pf.LIFT_WINDOW_DAYS,
+                 "lift_ratio": pf.LIFT_RATIO_MAX,
+                 "news_days": pf.NEWS_WINDOW_DAYS}
+    except Exception:                                     # noqa: BLE001
+        fmeta = {"mv": [30, 200], "lift_days": 60, "lift_ratio": 0.15, "news_days": 90}
     if not obj.get("day"):
         print("[pattern] 扫描产物缺失（首跑或离线），保留既有 pattern.json")
         return old
@@ -458,6 +469,10 @@ def build_pattern() -> dict:
         "lag": obj.get("lag", ""),
         "counts": obj.get("counts") or {"A": 0, "B": 0, "C": 0},
         "rows": obj.get("rows") or [],
+        # 被筛掉的标的与口径一并落盘：名单变短时能看出「为什么少」，而不是黑箱
+        "dropped": obj.get("dropped") or [],
+        "rejected": obj.get("rejected") or [],
+        "filter": fmeta,
         "backtest": summary,
         "span": (bt.get("meta") or {}).get("span", []),
     }
