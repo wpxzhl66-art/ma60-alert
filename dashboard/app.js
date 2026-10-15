@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.13.1';
+  const APP_VERSION = 'v1.14.0';
 
   const S = {
     data: null,        // data.json
@@ -1211,7 +1211,8 @@
         $('pane-' + b.dataset.tab).classList.add('on');
         window.scrollTo({ top: 0 });
         if (b.dataset.tab === 'system' && trendChart) setTimeout(() => trendChart.resize(), 50);
-        if (b.dataset.tab === 'futures') renderFutures();   // 懒加载：切到本页才拉 fut.json
+        // v1.14.0：期货并入策略一（today）页，随本页显示/切换时渲染
+        if (b.dataset.tab === 'today') renderFutures();
         if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机/云端扫描生成
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
       });
@@ -1220,8 +1221,9 @@
 
   /** 支持 ?tab=today|system|account 直达（也用于分享与自动截图） */
   function applyTabFromUrl() {
-    const t = new URL(location.href).searchParams.get('tab');
+    let t = new URL(location.href).searchParams.get('tab');
     if (!t) return;
+    if (t === 'futures') t = 'today';   // v1.14.0：期货并入策略一，旧链接兼容
     const b = document.querySelector('.tabbar button[data-tab="' + t + '"]');
     if (b) b.click();
   }
@@ -1244,6 +1246,7 @@
       S.static = st;
       renderToday();
       renderSystem();
+      renderFutures();   // v1.14.0：期货并入策略一页（默认页），启动即拉 fut.json
       window.WB_ACCOUNT.boot();
       applyTabFromUrl();
       // 兜底价格源（可选，失败不影响主流程）

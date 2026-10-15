@@ -17,14 +17,15 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.13.1</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.14.0</span>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- ==================== 今天 ==================== -->
+  <!-- ==================== 策略一（今天 + 期货 · 来自 阿利） ==================== -->
   <section class="tabpane on" id="pane-today">
+    <div class="section-label">策略一 · 来自 阿利</div>
     <div class="card" id="todayHero">
       <div class="loading"><span class="spinner"></span></div>
     </div>
@@ -52,10 +53,46 @@
       </div>
       <div class="note" id="trigNote"></div>
     </div>
+
+    <div class="section-label">策略一 · 期货部分（同一套均线逻辑）</div>
+    <div class="card" id="futHero">
+      <div class="loading"><span class="spinner"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>今天的期货品种提醒</h2>
+        <div class="hint" id="futHint">—</div>
+      </div>
+      <div class="plain">
+        和股票用的是同一套逻辑：看价格是不是回到了<b>长期平均价</b>附近。
+      </div>
+      <div class="sortbar" id="futSort"></div>
+      <div class="list" id="futList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="note" id="futNote"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>每个品种离均线还有多远</h2>
+        <div class="hint" id="futAllHint"></div>
+      </div>
+      <div class="plain">
+        上面那栏是<b>有情况</b>的品种，这里把全部品种都列出来，方便对照。
+      </div>
+      <div class="sortbar" id="futAllSort"></div>
+      <div class="list" id="futAllList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="note" id="futAllNote"></div>
+    </div>
   </section>
 
-  <!-- ==================== 大涨股 ==================== -->
+  <!-- ==================== 策略二（大涨股 · 来自 雾绵） ==================== -->
   <section class="tabpane" id="pane-pattern">
+    <div class="section-label">策略二 · 来自 雾绵</div>
     <div class="card" id="patHero">
       <div class="loading"><span class="spinner"></span></div>
     </div>
@@ -105,45 +142,6 @@
 
     <div class="card">
       <div class="note" id="patNote"></div>
-    </div>
-  </section>
-
-  <!-- ==================== 期货 ==================== -->
-  <section class="tabpane" id="pane-futures">
-    <div class="card" id="futHero">
-      <div class="loading"><span class="spinner"></span></div>
-    </div>
-
-    <div class="section-label">已经靠近均线的品种</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>今天的期货品种提醒</h2>
-        <div class="hint" id="futHint">—</div>
-      </div>
-      <div class="plain">
-        和股票用的是同一套逻辑：看价格是不是回到了<b>长期平均价</b>附近。
-      </div>
-      <div class="sortbar" id="futSort"></div>
-      <div class="list" id="futList">
-        <div class="loading"><span class="spinner"></span></div>
-      </div>
-      <div class="note" id="futNote"></div>
-    </div>
-
-    <div class="section-label">全部期货品种</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>每个品种离均线还有多远</h2>
-        <div class="hint" id="futAllHint"></div>
-      </div>
-      <div class="plain">
-        上面那栏是<b>有情况</b>的品种，这里把全部品种都列出来，方便对照。
-      </div>
-      <div class="sortbar" id="futAllSort"></div>
-      <div class="list" id="futAllList">
-        <div class="loading"><span class="spinner"></span></div>
-      </div>
-      <div class="note" id="futAllNote"></div>
     </div>
   </section>
 
@@ -244,9 +242,8 @@
 
 <nav class="tabbar">
   <div class="inner">
-    <button class="on" data-tab="today"><span class="ico">📅</span>今天</button>
-    <button data-tab="pattern"><span class="ico">🔥</span>大涨股</button>
-    <button data-tab="futures"><span class="ico">📊</span>期货</button>
+    <button class="on" data-tab="today"><span class="ico">📊</span>策略一</button>
+    <button data-tab="pattern"><span class="ico">🔥</span>策略二</button>
     <button data-tab="system"><span class="ico">⚙️</span>系统</button>
     <button data-tab="account"><span class="ico">👤</span>我的</button>
   </div>
