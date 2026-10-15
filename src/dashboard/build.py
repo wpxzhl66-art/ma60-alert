@@ -559,7 +559,9 @@ def main() -> None:
         build_data(static_obj)
     if a.all or a.daily or a.weekly or a.futures:
         build_futures()
-    # 形态数据必须在本机跑（云端没有日线仓），不与 --daily 联动，避免云端覆盖
+    # 形态数据由形态扫描专属产出（本机 pattern.scan / 云端 pattern.store_scan），
+    # 不与 --daily 联动：数据更新轮不跑形态扫描，latest.json 还停在上一次扫描，
+    # 重建只会无谓地触碰 dashboard/pattern.json（两道防回退保护能兜住，但没必要）。
     if a.all or a.pattern:
         build_pattern()
 

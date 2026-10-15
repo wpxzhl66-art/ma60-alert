@@ -299,8 +299,10 @@ def run_notify(sha: str):
       * A 股无触发而其余板块有 → 单独推一条，标题切到该板块主题
       * 全都无内容 → 不推送（省额度）
 
-    形态段落只在**收盘确认轮**追加：形态扫描由本机在收盘后完成并写出
-    dashboard/pattern.json，云端不产出该文件（没有日线仓）。
+    形态段落只在**收盘确认轮**追加：形态是收盘后的判断，盘中追加没有意义。
+
+    v1.9.0 起形态扫描云端也能跑（``pattern.store_scan`` 读 ``store/daily`` 分片仓），
+    不再依赖本机的 ``data/daily``——本机不在线时由云端产出 dashboard/pattern.json。
     """
     from . import fut_alert, pattern_alert
 
