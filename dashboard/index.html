@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.15.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.16.0</span>
   </div>
 </header>
 
@@ -365,7 +365,9 @@
         <input id="aiGateModel" placeholder="例如 gpt-4o-mini" autocomplete="off">
       </div>
       <div class="field">
-        <label>API Key</label>
+        <label>API Key
+          <button type="button" class="trial-btn" id="aiGateTrial">申请测试 Key（10 分钟）</button>
+        </label>
         <input id="aiGateKey" type="password" placeholder="sk-…" autocomplete="off">
       </div>
       <div class="card" style="margin:4px 0 14px">

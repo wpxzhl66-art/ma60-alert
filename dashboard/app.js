@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.15.0';
+  const APP_VERSION = 'v1.16.0';
 
   const S = {
     data: null,        // data.json
@@ -966,6 +966,38 @@
 
   const AI_LS_KEY = 'wb.ai.cfg';
 
+  /* —— 体验 Key（v1.16.0）——
+     站长把自己的小额测试 Key 藏在 ai_config.js（分两段 base64，不整串明文）。
+     访客点「申请测试 Key」→ 拼回原文隐匿填入（输入框是 password），
+     10 分钟后自动失效：清配置 + 重新弹出向导，必须换自己的 Key 或重新申请。 */
+  const TRIAL_LS = 'wb.ai.trialUntil';
+
+  function aiTrialKey() {
+    try { return atob((window.AI_CFG.trialKeyParts || []).join('')); }
+    catch (e) { return ''; }
+  }
+  /** 剩余有效毫秒数；<=0 = 没申请过或已过期 */
+  function aiTrialLeft() {
+    return Number(localStorage.getItem(TRIAL_LS) || 0) - Date.now();
+  }
+  function aiTrialSweep() {
+    const c = aiCfg();
+    if (c && c.apiKey && c.apiKey === aiTrialKey() && aiTrialLeft() <= 0) {
+      localStorage.removeItem(AI_LS_KEY);
+      localStorage.removeItem(TRIAL_LS);
+      return true;                 // true = 刚刚发生了过期
+    }
+    return false;
+  }
+  /** 过期收尾：清配置 → 弹回向导 → 提示已过期（未过期则不动） */
+  function aiTrialExpire() {
+    if (!aiTrialSweep()) return;
+    aiGateInit(true);
+    const m = $('aiGateMsg');
+    if (m) m.innerHTML = '<span style="color:var(--orange)">测试 Key 已过有效期（10 分钟），' +
+      '请填自己的 Key，或再点「申请测试 Key」。</span>';
+  }
+
   function aiCfg() {
     try { return JSON.parse(localStorage.getItem(AI_LS_KEY) || 'null'); }
     catch (e) { return null; }
@@ -973,7 +1005,9 @@
 
   function aiCfgOk() {
     const c = aiCfg();
-    return !!(c && c.apiKey && c.baseUrl && c.model);
+    if (!c || !c.apiKey || !c.baseUrl || !c.model) return false;
+    if (c.apiKey === aiTrialKey() && aiTrialLeft() <= 0) return false;  // 体验 Key 已过期
+    return true;
   }
 
   function aiCacheKey(code) { return 'wb.ai.' + code; }
@@ -1117,6 +1151,21 @@
     }
   }
 
+  /** 「申请测试 Key」：隐匿填入体验 Key，并起 10 分钟有效期 */
+  function aiGateTrial() {
+    const k = aiTrialKey();
+    const msg = $('aiGateMsg');
+    if (!k) { msg.textContent = '本站暂未配置体验 Key。'; return; }
+    const sel = $('aiGatePreset');
+    sel.value = 'deepseek';            // 体验 Key 配 DeepSeek 接口
+    aiGatePresetChange();
+    $('aiGateKey').value = k;          // password 输入框 → 隐匿显示
+    localStorage.setItem(TRIAL_LS, String(Date.now() + (window.AI_CFG.trialTtlMs || 600000)));
+    const min = Math.round((window.AI_CFG.trialTtlMs || 600000) / 60000);
+    msg.innerHTML = '<span style="color:var(--up)">已为你填入测试 Key（隐匿显示），<b>' + min +
+      ' 分钟内有效</b>。点下方「测试连通并进入」即可开始；到期会自动退出并要求换 Key。</span>';
+  }
+
   function aiGateInit(force) {
     const mask = $('aiGateMask');
     if (!mask) return;
@@ -1191,6 +1240,8 @@
     if (!mask) return;
     $('aiGateTest').addEventListener('click', aiGateTest);
     $('aiGateClose').addEventListener('click', () => mask.classList.remove('show'));
+    const tb = $('aiGateTrial');
+    if (tb) tb.addEventListener('click', aiGateTrial);
     mask.addEventListener('click', (e) => {
       if (e.target === mask && mask.dataset.dismissable === '1') mask.classList.remove('show');
     });
@@ -1339,6 +1390,8 @@
   async function boot() {
     aiGateInit();      // v1.15.0：未配置 AI 时先弹配置向导（盖住整页，测通才能操作）
     aiGateBind();
+    aiTrialExpire();                       // v1.16.0：体验 Key 已过期则清配置并提示
+    setInterval(aiTrialExpire, 30 * 1000); // 每 30 秒巡检一次有效期，到点自动弹回向导
     bindTabs();
     bindSheets();
     const vb = $('verBadge');

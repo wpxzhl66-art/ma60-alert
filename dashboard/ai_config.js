@@ -22,4 +22,12 @@ window.AI_CFG = {
     { id: 'custom', name: '自定义（任何 OpenAI 兼容接口）',
       baseUrl: '', model: '' },
   ],
+
+  /* —— 站长体验 Key（v1.16.0）——
+     拆成两段 base64 藏在这里，避免整串明文直接暴露在源码里被爬虫扫走。
+     访客点向导里的「申请测试 Key」→ 拼回原文、隐匿填入 password 输入框，
+     trialTtlMs 毫秒后由页面自动失效（过期会清配置并重新弹向导）。
+     ⚠️ 前端存储终究能被有心人还原，这里只能放站长自己的小额体验 Key。 */
+  trialKeyParts: ['c2stZjFhNDA1N2VjNmRhNDAx', 'ZjlkMWM5NTQyMDIxM2U3YmY='],
+  trialTtlMs: 10 * 60 * 1000,      // 10 分钟
 };

@@ -221,6 +221,16 @@ button { font-family: inherit; font-size: inherit; border: none; cursor: pointer
 /* ---------------- 表单 ---------------- */
 .field { margin-bottom: 12px; }
 .field label { display: block; font-size: 12.5px; color: var(--text2); margin-bottom: 5px; font-weight: 550; }
+
+/* v1.16.0 体验 Key 按钮：标签行右侧小胶囊，点一下隐匿填入测试 Key */
+#aiGateMask .field label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trial-btn {
+  border: 1px solid var(--sep); background: var(--blue-bg); color: var(--blue);
+  font-size: 12px; font-weight: 550; padding: 3px 10px;
+  border-radius: 999px; cursor: pointer; white-space: nowrap; flex: none;
+}
+.trial-btn:active { opacity: .65; }
+.trial-btn:disabled { opacity: .45; cursor: default; }
 input, select, textarea {
   width: 100%; font-family: inherit; font-size: 16px;
   padding: 10px 12px; border-radius: 11px;
