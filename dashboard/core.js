@@ -149,18 +149,52 @@ window.WBcore = (function () {
 
   /* ------------------------------------------------ 数据加载
      远端仓库优先，失败回退同目录本地文件（本地开发/离线可用）。 */
-  async function loadJSON(name) {
-    const urls = [REMOTE + '/' + name + '?_=' + Date.now(), './' + name];
-    let err = null;
-    for (const u of urls) {
-      try {
-        const r = await fetch(u, { cache: 'no-store' });
-        if (!r.ok) { err = new Error(r.status); continue; }
-        return await r.json();
-      } catch (e) { err = e; }
+  /* ------------------------------------------------ 数据加载（v1.19.1 加固）
+     站点自带 json 只是兜底，远端 raw（云端每天更新）优先。
+     ⚠️ v1.19.1 修的 bug：raw.githubusercontent.com 在国内会「沉默挂起」
+     （TCP 连不上但 fetch 既不报错也不返回）——旧实现没有超时，
+     结果整个看板永远停在「正在加载…」。
+     现在：远端 3.5 秒拿不到 → 立刻回退站点自带快照，并记住「远端不可用」，
+     同一页面后续文件直接走本地（不再每个文件都干等一次）；
+     远端成功后标记复位，下次打开仍优先取最新数据。
+     页面可用 WBcore.dataSource() 判断这批数据是远端最新还是站点快照。 */
+  const REMOTE_TIMEOUT_MS = 3500;
+  const LOCAL_TIMEOUT_MS = 15000;
+  let remoteDown = false;      // 本次页面会话内远端是否已判定不可用
+  let lastSource = '';         // 'remote'（最新）| 'local'（站点自带快照）
+
+  /** 带超时的 JSON 拉取：超时/非 2xx/解析失败都算失败 */
+  async function fetchJSON(url, timeoutMs) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally {
+      clearTimeout(timer);
     }
-    throw err || new Error('加载失败：' + name);
   }
+
+  async function loadJSON(name) {
+    if (!remoteDown) {
+      try {
+        const j = await fetchJSON(REMOTE + '/' + name + '?_=' + Date.now(), REMOTE_TIMEOUT_MS);
+        lastSource = 'remote';
+        return j;
+      } catch (e) {
+        remoteDown = true;     // 后续文件不再尝试远端，直接走本地
+      }
+    }
+    const j = await fetchJSON('./' + name, LOCAL_TIMEOUT_MS);
+    lastSource = 'local';
+    return j;
+  }
+
+  /** 最近一批数据来自哪里：'remote'（最新）| 'local'（站点自带快照） */
+  function dataSource() { return lastSource; }
+  /** 远端是否已被判定连不上（用于界面提示，不给用户看技术细节） */
+  function remoteUnavailable() { return remoteDown; }
 
   /* ------------------------------------------------ 单股周线（前复权，按需）
      整包 weekly.json（4MB+）自 v1.2.1 停用 —— 国内访问 raw 基本拉不完。
@@ -309,6 +343,6 @@ window.WBcore = (function () {
     REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
     sort, readSort, writeSort, curField, sortRows, sortTip, drawSortBar,
     mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
-    isRiskName,
+    isRiskName, dataSource, remoteUnavailable,
   };
 })();

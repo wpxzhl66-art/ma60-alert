@@ -14,7 +14,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.19.0';
+  const APP_VERSION = 'v1.19.1';
 
   const S = {
     data: null,        // data.json
@@ -210,6 +210,17 @@
     const tv = trigVisibleRows();
     const rows = tv.rows;
     const today = d.today;
+
+    // v1.19.1：远端数据源连不上、用的是站点自带快照 → 明确告诉用户（数据可能不是最新）
+    const srcWarn = $('srcWarn');
+    if (srcWarn) {
+      srcWarn.innerHTML = C.remoteUnavailable()
+        ? '<div class="banner" style="margin-bottom:12px">当前显示的是<b>发布时自带的快照数据</b>（截至 ' +
+          esc((d.health && d.health.last_update) || d.today || '—') +
+          '）——实时数据源（GitHub）这次没连上，<b>刷新页面会再试一次</b>。' +
+          '看名单、历史、形态分析都不受影响，只是可能少最近一两天的新增。</div>'
+        : '';
+    }
 
     // 近一月历史触发入口卡（数据来自 data.json 的 hist 摘要字段）
     const h = d.hist || {};

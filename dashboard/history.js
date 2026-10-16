@@ -12,7 +12,7 @@
           loadJSON, fetchWeeklyOne, weeklyChartOption, ma, isRiskName } = C;
 
   // 交付物版本号：每次改动递增（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.19.0';
+  const APP_VERSION = 'v1.19.1';
 
   const S = {
     d: null,          // history.json
@@ -395,6 +395,13 @@
         '<br><br>请确认 dashboard/history.json 已生成并推送。</div>';
       $('evList').innerHTML = '';
       return;
+    }
+    // v1.19.1：远端数据源连不上、用的是站点自带快照 → 明确告示（数据可能不是最新）
+    const sw = $('srcWarn');
+    if (sw && C.remoteUnavailable()) {
+      sw.innerHTML = '<div class="banner" style="margin-bottom:12px">当前显示的是' +
+        '<b>发布时自带的快照数据</b>（截至 ' + esc(S.d.data_date || '—') +
+        '）——实时数据源（GitHub）这次没连上，<b>刷新页面会再试一次</b>。</div>';
     }
     renderHero();
     renderCal();
