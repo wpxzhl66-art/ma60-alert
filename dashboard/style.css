@@ -153,8 +153,16 @@ a { color: var(--blue); text-decoration: none; }
 .chip.on { background: var(--blue); color: #fff; }
 .chip .ar { font-size: 9px; line-height: 1; opacity: .9; }
 
-/* ---------------- 列表 ---------------- */
-.list { display: flex; flex-direction: column; }
+/* v1.17.0 图表范围切换：周线（全部）/ 最近100日 / 最近200日 */
+.chartRange {
+  display: flex; gap: 6px; padding: 10px 16px 0;
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.chartRange::-webkit-scrollbar { display: none; }
+.chartRange:empty { display: none; }
+.chartRange .chip { border: 0; cursor: pointer; font-family: inherit; }
+
+/* ---------------- 列表 ---------------- */.list { display: flex; flex-direction: column; }
 .row {
   display: flex; align-items: center; gap: 12px;
   padding: 11px 16px;

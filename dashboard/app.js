@@ -10,10 +10,10 @@
   const C = window.WBcore;
   const { REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
           readSort, curField, sortRows, sortTip, drawSortBar,
-          mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric } = C;
+          mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.16.0';
+  const APP_VERSION = 'v1.17.0';
 
   const S = {
     data: null,        // data.json
@@ -556,6 +556,8 @@
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = 'none';
     $('chartSell').style.display = 'none';
+    $('chartRange').style.display = 'none';   // 期货只有加权周线，不提供日线范围切换（v1.17.0）
+    kRange = 'week'; kWeekly = null; kDaily = null;
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
     let d = S.fut;
     if (!d) { try { d = await loadFutures(); } catch (e) { d = null; } }
@@ -898,6 +900,8 @@
       if (r.url) row.addEventListener('click', () => window.open(r.url, '_blank'));
       list.appendChild(row);
     });
+
+    renderAiLog();     // v1.17.0：AI 调用日志（请求 / 时间 / 消耗 Token）
   }
 
   let trendChart = null;
@@ -950,6 +954,9 @@
   /* ------------------------------------------------ 周K 图 */
   let kChart = null;
   let kContext = null;
+  let kRange = 'week';        // 图表范围：week（全部周线）/ '100' / '200'（最近 N 个交易日的日线，v1.17.0）
+  let kWeekly = null;         // 当前标的周线（切范围时复用）
+  let kDaily = null;          // 当前标的日线（首次切到日线时抓，当天缓存）
 
   /* ---------------- AI 五维投资评价（v1.13.0 引入，v1.15.0 改本地 Key） ----------------
      Key 不再写在 ai_config.js（仓库公开=泄露）。首次访问弹出配置向导，
@@ -1042,8 +1049,81 @@
     return p.join('\n');
   }
 
+  /* ---------------- AI 调用日志（v1.17.0） ----------------
+     每次**真正调用模型**都记一条：请求内容 / 时间 / 消耗 Token（取接口返回的 usage）。
+     只存在使用者自己的浏览器（localStorage），最多留 50 条，不上传任何地方。 */
+  const AI_LOG_KEY = 'wb.ai.log';
+  const AI_LOG_MAX = 50;
+
+  function aiLogRead() {
+    try { return JSON.parse(localStorage.getItem(AI_LOG_KEY) || '[]') || []; }
+    catch (e) { return []; }
+  }
+
+  function aiLogAdd(entry) {
+    const list = aiLogRead();
+    list.unshift(entry);                                   // 新的在前
+    try { localStorage.setItem(AI_LOG_KEY, JSON.stringify(list.slice(0, AI_LOG_MAX))); }
+    catch (e) { /* 隐私模式存不了就算了 */ }
+    renderAiLog();
+  }
+
+  /** 各家 usage 字段略有差异，统一成 { p, c, t }（取不到就是 null，如实显示） */
+  function aiTokens(usage) {
+    if (!usage) return null;
+    const p = usage.prompt_tokens != null ? usage.prompt_tokens : usage.input_tokens;
+    const c = usage.completion_tokens != null ? usage.completion_tokens : usage.output_tokens;
+    let t = usage.total_tokens != null ? usage.total_tokens : null;
+    if (t == null && (p != null || c != null)) t = (p || 0) + (c || 0);
+    return { p: p == null ? null : p, c: c == null ? null : c, t: t };
+  }
+
+  function aiNow() {
+    const d = new Date(), p = (x) => String(x).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function renderAiLog() {
+    const list = $('aiLogList');
+    if (!list) return;
+    const rows = aiLogRead();
+    const sum = $('aiLogSum');
+    const total = rows.reduce((a, r) => a + ((r.tokens && r.tokens.t) || 0), 0);
+    if (sum) {
+      sum.innerHTML = rows.length
+        ? '共 <b>' + rows.length + '</b> 次调用，累计消耗 <b>' + total + '</b> Token。' +
+          '只记在你自己这台浏览器里，最多留 ' + AI_LOG_MAX + ' 条。<br/>' +
+          '不点「生成 AI 五维评价」就不会调用模型，也就不会消耗 Token。'
+        : '还没有调用记录。<b>只有点「生成 AI 五维评价」或向导里的「测试连通」才会调用模型计费</b>，' +
+          '其他功能（列表、周线图、期货、历史）都不消耗 Token。';
+    }
+    if (!rows.length) { list.innerHTML = '<div class="empty">暂无记录</div>'; return; }
+    list.innerHTML = '';
+    rows.forEach((r) => {
+      const tk = r.tokens && r.tokens.t != null ? r.tokens.t : null;
+      const row = el('div', 'row');
+      row.innerHTML =
+        '<div class="grow"><div class="t1">' + esc(r.req || '—') + '</div>' +
+        '<div class="t2"><span>' + esc(r.at || '') + '</span>' +
+        '<span>' + esc(r.model || '') + '</span>' +
+        (r.ok ? '<span class="tag down">成功</span>' : '<span class="tag up">失败</span>') + '</div>' +
+        (r.ok ? '' : '<div class="t2" style="white-space:normal">' +
+          esc(String(r.err || '').slice(0, 120)) + '</div>') +
+        '</div>' +
+        '<div class="r"><div class="p">' + (tk == null ? '—' : tk) + '</div>' +
+        '<div class="s muted">Token</div></div>';
+      list.appendChild(row);
+    });
+  }
+
   async function aiCall(ctx) {
     const cfg = aiCfg();
+    const req = (ctx && ctx.name
+      ? ctx.name + '（' + String(ctx.code || '').replace('.', '') + '）' : '未知标的') +
+      ' · AI 五维评价';
+    const model = (cfg && cfg.model) || '—';
+    let usage = null;                       // 有 usage 就记，没有就如实显示「—」
     const sys =
       '你是严谨的 A 股投资分析助手。用户会给你一只股票的客观指标，' +
       '请从五个维度给出简短评价：' + AI_DIMS.join('、') + '。' +
@@ -1052,29 +1132,37 @@
       '不要把「站上长期均线」当成看涨依据；③ 不确定的消息面/资金面信息标 neutral，' +
       '禁止编造具体新闻、公告或资金数据；④ 严格输出 JSON，不要多余文字，格式：' +
       '{"dims":[{"name":"消息面","level":"neutral","text":"…"},…五个],"summary":"不超过 60 字的总体结论"}';
-    const res = await fetch(cfg.baseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: aiFacts(ctx) }],
-        temperature: 0.3,
-        stream: false,
-      }),
-    });
-    if (!res.ok) {
-      const t = (await res.text().catch(() => '')).slice(0, 160);
-      throw new Error('接口返回 ' + res.status + (t ? '：' + t : ''));
+    try {
+      const res = await fetch(cfg.baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [{ role: 'system', content: sys }, { role: 'user', content: aiFacts(ctx) }],
+          temperature: 0.3,
+          stream: false,
+        }),
+      });
+      if (!res.ok) {
+        const t = (await res.text().catch(() => '')).slice(0, 160);
+        throw new Error('接口返回 ' + res.status + (t ? '：' + t : ''));
+      }
+      const j = await res.json();
+      usage = aiTokens(j && j.usage);
+      let txt = (j.choices && j.choices[0] && j.choices[0].message &&
+                 j.choices[0].message.content) || '';
+      txt = txt.replace(/```json|```/g, '').trim();
+      const m = txt.indexOf('{'), e = txt.lastIndexOf('}');
+      if (m < 0 || e <= m) throw new Error('模型没有返回 JSON');
+      const obj = JSON.parse(txt.slice(m, e + 1));
+      if (!Array.isArray(obj.dims) || !obj.dims.length) throw new Error('返回内容为空');
+      aiLogAdd({ at: aiNow(), req: req, model: model, tokens: usage, ok: true });
+      return obj;
+    } catch (err) {
+      aiLogAdd({ at: aiNow(), req: req, model: model, tokens: usage, ok: false,
+                 err: String((err && err.message) || err) });
+      throw err;
     }
-    const j = await res.json();
-    let txt = (j.choices && j.choices[0] && j.choices[0].message &&
-               j.choices[0].message.content) || '';
-    txt = txt.replace(/```json|```/g, '').trim();
-    const m = txt.indexOf('{'), e = txt.lastIndexOf('}');
-    if (m < 0 || e <= m) throw new Error('模型没有返回 JSON');
-    const obj = JSON.parse(txt.slice(m, e + 1));
-    if (!Array.isArray(obj.dims) || !obj.dims.length) throw new Error('返回内容为空');
-    return obj;
   }
 
   function aiRender(obj, code) {
@@ -1225,9 +1313,13 @@
         presetId: p ? p.id : 'custom', baseUrl: baseUrl, model: model,
         apiKey: apiKey, okDay: new Date().toISOString().slice(0, 10),
       }));
+      aiLogAdd({ at: aiNow(), req: '连通测试（' + model + '）', model: model,
+                 tokens: aiTokens(j && j.usage), ok: true });
       msg.innerHTML = '<span style="color:var(--up)"><b>✅ 连通成功</b>，配置已保存在本浏览器。</span>';
       setTimeout(() => { $('aiGateMask').classList.remove('show'); }, 450);
     } catch (e) {
+      aiLogAdd({ at: aiNow(), req: '连通测试（' + (model || '—') + '）', model: model || '—',
+                 tokens: null, ok: false, err: String((e && e.message) || e) });
       msg.innerHTML = '<span style="color:var(--down)"><b>❌ 连通失败</b>：' + esc(String(e.message || e)) +
         '<br/>请检查 Key 是否有效、接口地址、模型名；浏览器控制台若见 CORS 报错，' +
         '说明该厂商不允许网页直连，换 DeepSeek/智谱等支持的厂商。</span>';
@@ -1268,10 +1360,14 @@
 
   async function openKline(code, name, ctx) {
     kContext = { code: code, name: name, kind: 'stock', ctx: ctx || null };
+    kRange = 'week';                        // 每次打开默认回到「周线（全部）」
+    kWeekly = null; kDaily = null;
     $('chartTitle').textContent = name + ' · 周线图';
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = '';
     $('chartSell').style.display = '';
+    $('chartRange').style.display = '';
+    renderRangeChips();                     // v1.17.0：周线 / 最近100日 / 最近200日
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
     renderAiIntro();                                  // AI 评价区先就位（缓存命中则直接出结果）
     const series = await fetchWeeklyOne(code).catch(() => null);
@@ -1280,11 +1376,51 @@
         '<div class="empty">周线数据获取失败<br>请检查网络后重试</div>';
       return;
     }
-    renderKline(code, series);
+    kWeekly = series;
+    renderKline(code, series, 'week');
     renderChartStats(code, series);
   }
 
-  function renderKline(code, series) {
+  /* ---------------- 图表范围切换（v1.17.0） ----------------
+     周线看长期趋势（整段历史 + 60 周线），日线看最近 100 / 200 个交易日
+     （蓝线日收盘 + 橙线 60 日线）。日线数据按需抓、当天缓存，切回周线不再请求。 */
+  function renderRangeChips() {
+    const box = $('chartRange');
+    if (!box) return;
+    box.innerHTML = '';
+    [['week', '周线（全部）'], ['100', '最近100日'], ['200', '最近200日']].forEach((kv) => {
+      const b = el('button', 'chip' + (kRange === kv[0] ? ' on' : ''), kv[1]);
+      b.type = 'button';
+      b.dataset.range = kv[0];
+      b.addEventListener('click', () => switchRange(kv[0]));
+      box.appendChild(b);
+    });
+  }
+
+  async function switchRange(id) {
+    if (!kContext || id === kRange) return;
+    kRange = id;
+    renderRangeChips();
+    if (id === 'week') {
+      $('chartTitle').textContent = kContext.name + ' · 周线图';
+      if (kWeekly) renderKline(kContext.code, kWeekly, 'week');
+      writeChartNote(false);
+      return;
+    }
+    const n = id === '100' ? 100 : 200;
+    $('chartTitle').textContent = kContext.name + ' · 最近' + n + '日（日线）';
+    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载日线…</div>';
+    if (!kDaily) kDaily = await fetchDailyOne(kContext.code).catch(() => null);
+    if (!kDaily || !kDaily.length) {
+      $('kChart').innerHTML =
+        '<div class="empty">日线数据获取失败<br>请检查网络后重试（点「周线（全部）」可回到周线）</div>';
+      return;
+    }
+    renderKline(kContext.code, kDaily, id);
+    writeChartNote(true);
+  }
+
+  function renderKline(code, series, mode) {
     const node = $('kChart');
     // 必须先销毁旧实例再重建：上一张图的画布已被 innerHTML 清空，
     // 复用旧实例会画到已脱离 DOM 的画布上 → 第二次打开看不到图
@@ -1292,12 +1428,25 @@
     node.innerHTML = '';
     kChart = initChart(node);
     if (!kChart) return;
-    const weeks = series.map((d) => d.week);
-    const closes = series.map((d) => d.close);
-    const m60 = ma(closes, 60);
+    const daily = (mode === '100' || mode === '200');
+    // 均线先在完整序列上算，再截取窗口 —— 否则窗口开头 59 天会没有均线
+    const mAll = ma(series.map((d) => d.close), 60);
+    let xs, closes, m60;
+    if (daily) {
+      const n = mode === '100' ? 100 : 200;
+      const from = Math.max(0, series.length - n);
+      xs = series.slice(from).map((d) => d.day);
+      closes = series.slice(from).map((d) => d.close);
+      m60 = mAll.slice(from);
+    } else {
+      xs = series.map((d) => d.week);
+      closes = series.map((d) => d.close);
+      m60 = mAll;
+    }
 
-    const marks = (window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code, weeks)) ||
-                  { buys: [], sells: [] };
+    // B/S 买卖点按周记录，只在周线视图标注（日线视图不硬凑）
+    const marks = daily ? { buys: [], sells: [] }
+      : ((window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code, xs)) || { buys: [], sells: [] });
     const buyPts = marks.buys.map((m) => ({
       name: 'B', coord: [m.week, m.price],
       value: 'B', symbol: 'pin', symbolSize: 34,
@@ -1309,8 +1458,10 @@
       itemStyle: { color: '#34c759' }, label: { color: '#fff', fontSize: 11, fontWeight: 700 },
     }));
 
-    kChart.setOption(weeklyChartOption(weeks, closes, m60, {
-      closeLabel: '周收盘', color: '#007aff',
+    kChart.setOption(weeklyChartOption(xs, closes, m60, {
+      closeLabel: daily ? '日收盘' : '周收盘',
+      maLabel: daily ? '60 日线' : '60 周线',
+      color: '#007aff',
       areaTop: 'rgba(0,122,255,.16)', areaBottom: 'rgba(0,122,255,0)',
       fmt: (v) => v.toFixed(2),
       markPoint: buyPts.concat(sellPts),
@@ -1331,14 +1482,26 @@
       metric('这周收盘价', num(last.close, 2), last.week) +
       metric('60 周平均价', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
       metric('所属行业', ind, q ? '现在的价格 ' + num(q[0], 2) : '');
-    $('chartNote').innerHTML =
-      '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是每周的收盘价，' +
-      '<b style="color:#ff9500">橙线</b>是「60 周平均价」（长期平均价）。' +
-      '蓝线从下面爬回来靠近橙线，就是「今天」页里提醒你的那种情况；' +
-      '蓝线跌破橙线，说明还在走弱。<br/>' +
-      '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
-      '和系统判断用的口径算出来结论完全一致。<br/>' +
-      '图上的 <b>B / S</b> 是你自己在模拟账户里记的买入 / 卖出点。';
+    writeChartNote(kRange !== 'week');     // v1.17.0：日线视图换说明文案
+  }
+
+  /* 图下说明：周线 / 日线两套文案（v1.17.0） */
+  function writeChartNote(daily) {
+    $('chartNote').innerHTML = daily
+      ? '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是<b>每天</b>的收盘价，' +
+        '<b style="color:#ff9500">橙线</b>是「60 日平均价」（中期平均价），看的是最近这段日线走势。<br/>' +
+        '上面指标卡里的「60 周平均价」仍是系统判定用的<b>长期口径</b>（每周收盘价取 60 周平均），' +
+        '日线图只是让你把最近这段看得更细。<br/>' +
+        '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
+        '和系统判断用的口径算出来结论完全一致。<br/>' +
+        '图上的 <b>B / S</b> 买卖点按周记录，只在周线图显示。'
+      : '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是每周的收盘价，' +
+        '<b style="color:#ff9500">橙线</b>是「60 周平均价」（长期平均价）。' +
+        '蓝线从下面爬回来靠近橙线，就是「今天」页里提醒你的那种情况；' +
+        '蓝线跌破橙线，说明还在走弱。<br/>' +
+        '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
+        '和系统判断用的口径算出来结论完全一致。<br/>' +
+        '图上的 <b>B / S</b> 是你自己在模拟账户里记的买入 / 卖出点。';
   }
 
   /* ------------------------------------------------ 弹层与 Tab */
@@ -1392,6 +1555,14 @@
     aiGateBind();
     aiTrialExpire();                       // v1.16.0：体验 Key 已过期则清配置并提示
     setInterval(aiTrialExpire, 30 * 1000); // 每 30 秒巡检一次有效期，到点自动弹回向导
+    const lc = $('aiLogClear');            // v1.17.0：清空 AI 调用日志（只清本机记录）
+    if (lc) lc.addEventListener('click', () => {
+      if (!aiLogRead().length) return;
+      if (window.confirm('清空全部 AI 调用记录？（只影响本机记录，其他功能不受影响）')) {
+        localStorage.removeItem(AI_LOG_KEY);
+        renderAiLog();
+      }
+    });
     bindTabs();
     bindSheets();
     const vb = $('verBadge');

@@ -196,6 +196,39 @@ window.WBcore = (function () {
     } finally { clearTimeout(timer); }
   }
 
+  /** 单股日线（前复权，按需）——v1.17.0
+      同一个腾讯接口换成 day；一次取 400 根（接口上限 640），
+      够「最近 200 日 + 前置 60 日算均线」用。缓存同周线，当天反复切换不重复请求。 */
+  const _d = {};
+  async function fetchDailyOne(code, fq, cnt) {
+    fq = (fq === undefined || fq === null) ? 'qfq' : fq;
+    const n = cnt || 400;
+    const key = code + '|' + fq + '|' + n;
+    if (_d[key]) return _d[key];
+    const sec = code.replace('.', '');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000);
+    try {
+      const r = await fetch(WK_URL + sec + ',day,,,' + n + ',' + fq, { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const blk = j && j.data && j.data[sec];
+      const want = fq === 'qfq' ? 'qfqday' : (fq === 'hfq' ? 'hfqday' : 'day');
+      let bars = (blk && Array.isArray(blk[want]) && blk[want].length) ? blk[want] : null;
+      if (!bars && blk) {
+        for (const k of ['qfqday', 'day', 'hfqday']) {
+          if (Array.isArray(blk[k]) && blk[k].length) { bars = blk[k]; break; }
+        }
+      }
+      if (!bars) throw new Error('无日线数据');
+      const out = bars.filter((b) => b && b.length >= 3)
+        .map((b) => ({ day: b[0], close: +b[2] }));
+      if (!out.length) throw new Error('无日线数据');
+      _d[key] = out;
+      return out;
+    } finally { clearTimeout(timer); }
+  }
+
   /** 指标卡（.metrics 网格的单元）：k 标题 / v 值 / x 副注 / cl 颜色类 */
   function metric(k, v, x, cl) {
     return '<div class="metric"><div class="k">' + esc(k) + '</div>' +
@@ -203,10 +236,11 @@ window.WBcore = (function () {
       (x ? '<div class="x">' + esc(x) + '</div>' : '') + '</div>';
   }
 
-  /* ------------------------------------------------ 周K 图公共配置
-     股票周 K 与期货加权周 K 共用，也供历史页复用 —— 两处图表交互保持一致。
-     o: { color, areaTop, areaBottom, closeLabel, fmt, gridLeft, markPoint } */
+  /* ------------------------------------------------ K 线图公共配置
+     股票周/日 K 与期货加权周 K 共用，也供历史页复用 —— 两处图表交互保持一致。
+     o: { color, areaTop, areaBottom, closeLabel, maLabel, fmt, gridLeft, markPoint } */
   function weeklyChartOption(weeks, closes, m60, o) {
+    const maLabel = o.maLabel || '60 周线';
     return {
       animation: false,
       grid: { left: o.gridLeft || 46, right: 14, top: 22, bottom: 30 },
@@ -218,7 +252,7 @@ window.WBcore = (function () {
           if (!ps || !ps.length) return '';
           const i = ps[0].dataIndex;
           let s = weeks[i] + '<br/>' + o.closeLabel + ' <b>' + o.fmt(closes[i]) + '</b>';
-          if (m60[i] != null) s += '<br/>60 周线 ' + o.fmt(m60[i]);
+          if (m60[i] != null) s += '<br/>' + maLabel + ' ' + o.fmt(m60[i]);
           return s;
         },
       },
@@ -245,7 +279,7 @@ window.WBcore = (function () {
           markPoint: o.markPoint ? { data: o.markPoint, silent: true } : undefined,
         },
         {
-          name: '60 周线', type: 'line', data: m60, symbol: 'none',
+          name: maLabel, type: 'line', data: m60, symbol: 'none',
           lineStyle: { width: 1.8, color: '#ff9500' },
         },
       ],
@@ -267,6 +301,6 @@ window.WBcore = (function () {
   return {
     REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
     sort, readSort, writeSort, curField, sortRows, sortTip, drawSortBar,
-    mountSort, loadJSON, fetchWeeklyOne, weeklyChartOption, ma, metric,
+    mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
   };
 })();
