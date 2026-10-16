@@ -263,6 +263,94 @@ window.WBcore = (function () {
     } finally { clearTimeout(timer); }
   }
 
+  /** K 线（蜡烛图）数据（前复权，按需）——v1.20.0
+      同一个腾讯接口，period='day'|'week'|'month'；返回 OHLCV（腾讯顺序：
+      [日期, 开, 收, 高, 低, 量(手)]）。day 取 400 根（接口上限 640），
+      够「最近 120 根显示 + 前置 60 根算 MA60」；week/month 取 320 根。 */
+  const _bars = {};
+  async function fetchBarsOne(code, period) {
+    const cnt = period === 'day' ? 400 : 320;
+    const key = code + '|' + period + '|' + cnt;
+    if (_bars[key]) return _bars[key];
+    const sec = code.replace('.', '');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000);
+    try {
+      const r = await fetch(WK_URL + sec + ',' + period + ',,,' + cnt + ',qfq',
+        { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const blk = j && j.data && j.data[sec];
+      const want = 'qfq' + period;
+      let bars = (blk && Array.isArray(blk[want]) && blk[want].length) ? blk[want] : null;
+      if (!bars && blk) {
+        for (const k of [want, period, 'qfq' + period]) {
+          if (Array.isArray(blk[k]) && blk[k].length) { bars = blk[k]; break; }
+        }
+      }
+      if (!bars) throw new Error('无K线数据');
+      const out = bars.filter((b) => b && b.length >= 6).map((b) => ({
+        d: b[0], open: +b[1], close: +b[2], high: +b[3], low: +b[4], vol: +b[5],
+      })).filter((b) => b.close > 0);
+      if (!out.length) throw new Error('无K线数据');
+      _bars[key] = out;
+      return out;
+    } finally { clearTimeout(timer); }
+  }
+
+  /** 当日分时（前复权口径即原始价）——v1.20.0
+      返回 { pre: 昨收, pts: [{t, price, avg, vol}] }；avg=均价线=累计额/(累计量×100)。
+      分钟成交量 = 相邻累计量之差（手）。 */
+  const MIN_URL = 'https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=';
+  const _min = {};
+  async function fetchMinuteOne(code) {
+    if (_min[code]) return _min[code];
+    const sec = code.replace('.', '');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000);
+    try {
+      const r = await fetch(MIN_URL + sec, { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const blk = j && j.data && j.data[sec] && j.data[sec].data;
+      const rows = blk && Array.isArray(blk.data) ? blk.data : null;
+      const qt = (j && j.data && j.data[sec] && j.data[sec].qt) || [];
+      const pre = +(blk && blk.prec != null ? blk.prec : qt[4]) || 0;
+      if (!rows || !rows.length) throw new Error('无分时数据');
+      let cumV = 0, cumA = 0;
+      const pts = rows.map((s) => {
+        const p = String(s).split(' ');
+        if (p.length < 3) return null;
+        const price = +p[1];
+        const v = +p[2] || 0, a = +p[3] || 0;
+        const dv = Math.max(0, v - cumV);
+        cumV = v; cumA = a;
+        return { t: p[0].slice(0, 2) + ':' + p[0].slice(2, 4),
+          price: price, avg: v > 0 ? a / (v * 100) : price, vol: dv };
+      }).filter((x) => x && x.price > 0);
+      if (!pts.length) throw new Error('无分时数据');
+      const out = { pre: pre || pts[0].price, pts: pts };
+      _min[code] = out;
+      return out;
+    } finally { clearTimeout(timer); }
+  }
+
+  /** 月线按年聚合成年K（零额外请求）：开=年首月开、收=年末日收、
+      高=各月最高、低=各月最低、量=求和。 */
+  function barsYearly(barsMonth) {
+    const by = {};
+    barsMonth.forEach((b) => {
+      const y = String(b.d).slice(0, 4);
+      const o = by[y] || (by[y] = { d: y, open: b.open, close: b.close,
+        high: b.high, low: b.low, vol: 0 });
+      o.close = b.close;
+      o.high = Math.max(o.high, b.high);
+      o.low = Math.min(o.low, b.low);
+      o.vol += b.vol;
+    });
+    return Object.keys(by).sort().map((y) => by[y]);
+  }
+
   /** 指标卡（.metrics 网格的单元）：k 标题 / v 值 / x 副注 / cl 颜色类 */
   function metric(k, v, x, cl) {
     return '<div class="metric"><div class="k">' + esc(k) + '</div>' +
@@ -320,6 +408,155 @@ window.WBcore = (function () {
     };
   }
 
+  /* ------------------------------------------------ 蜡烛图 / 分时图公共配置（v1.20.0）
+     A 股惯例：涨红 #ff3b30、跌绿 #34c759（与全站口径一致）。
+     MA 配色：MA5 黄 / MA10 紫 / MA20 蓝 / MA60 橙 —— 橙色延续旧「60 周期线」心智。 */
+  const K_UP = '#ff3b30';
+  const K_DN = '#34c759';
+  const K_MAS = [
+    ['ma5', 'MA5', '#ffcc00'], ['ma10', 'MA10', '#af52de'],
+    ['ma20', 'MA20', '#007aff'], ['ma60', 'MA60', '#ff9500'],
+  ];
+
+  /** 蜡烛图：bars=[{d,open,close,high,low,vol}]，o:{zoom 默认显示根数, markPoint, volUnit} */
+  function klineChartOption(bars, o) {
+    const xs = bars.map((b) => b.d);
+    const candles = bars.map((b) => [b.open, b.close, b.low, b.high]);
+    const mas = o.mas || {};
+    const legend = K_MAS.filter((m) => mas[m[0]]).map((m) => m[1]);
+    const series = [{
+      name: 'K线', type: 'candlestick', data: candles, barMaxWidth: 14,
+      itemStyle: { color: K_UP, color0: K_DN, borderColor: K_UP, borderColor0: K_DN },
+      markPoint: o.markPoint ? { data: o.markPoint, silent: true } : undefined,
+    }];
+    K_MAS.forEach((m) => {
+      if (!mas[m[0]]) return;
+      series.push({ name: m[1], type: 'line', data: mas[m[0]], symbol: 'none',
+        lineStyle: { width: 1, color: m[2] }, emphasis: { disabled: true } });
+    });
+    series.push({
+      name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1,
+      data: bars.map((b) => b.vol), barMaxWidth: 14,
+      itemStyle: { color: (p) => (bars[p.dataIndex].close >= bars[p.dataIndex].open ? K_UP : K_DN) },
+    });
+    let zoom;
+    if (o.zoom && bars.length > o.zoom) {
+      const s = Math.round((1 - o.zoom / bars.length) * 100);
+      zoom = [{ type: 'inside', xAxisIndex: [0, 1], start: s, end: 100 }];
+    } else {
+      zoom = [{ type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 }];
+    }
+    return {
+      animation: false,
+      legend: { show: legend.length > 0, data: legend, top: 0, right: 4,
+        itemWidth: 14, itemHeight: 8, textStyle: { color: '#8e8e93', fontSize: 10 } },
+      grid: [
+        { left: 46, right: 14, top: 22, height: '60%' },
+        { left: 46, right: 14, top: '74%', height: '16%' },
+      ],
+      tooltip: {
+        trigger: 'axis', backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (ps) => {
+          if (!ps || !ps.length) return '';
+          const i = ps[0].dataIndex;
+          const b = bars[i];
+          let s = xs[i] + '<br/>开 <b>' + b.open.toFixed(2) + '</b>　收 <b>' +
+            b.close.toFixed(2) + '</b><br/>高 ' + b.high.toFixed(2) + '　低 ' +
+            b.low.toFixed(2) + '<br/>量 ' + Math.round(b.vol).toLocaleString() + (o.volUnit || ' 手');
+          K_MAS.forEach((m) => {
+            if (mas[m[0]] && mas[m[0]][i] != null) s += '<br/><span style="color:' + m[2] + '">' +
+              m[1] + ' ' + mas[m[0]][i].toFixed(2) + '</span>';
+          });
+          return s;
+        },
+      },
+      xAxis: [
+        { type: 'category', data: xs, gridIndex: 0, boundaryGap: true,
+          axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+          axisTick: { show: false }, axisLabel: { show: false },
+          splitLine: { show: false } },
+        { type: 'category', data: xs, gridIndex: 1, boundaryGap: true,
+          axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+          axisTick: { show: false },
+          axisLabel: { color: '#8e8e93', fontSize: 10, formatter: (v) => v.slice(2, 7) },
+          splitLine: { show: false } },
+      ],
+      yAxis: [
+        { type: 'value', scale: true, gridIndex: 0,
+          splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
+          axisLabel: { color: '#8e8e93', fontSize: 10 } },
+        { type: 'value', gridIndex: 1,
+          splitLine: { show: false }, axisLabel: { show: false },
+          axisLine: { show: false }, axisTick: { show: false } },
+      ],
+      dataZoom: zoom,
+      series: series,
+    };
+  }
+
+  /** 分时图：m={pre 昨收, pts:[{t,price,avg,vol}]}；蓝线现价 + 橙线均价 + 昨收虚线 + 量副图 */
+  function minuteChartOption(m, o) {
+    const pts = m.pts;
+    const xs = pts.map((p) => p.t);
+    const prices = pts.map((p) => p.price);
+    const avgs = pts.map((p) => p.avg);
+    return {
+      animation: false,
+      grid: [
+        { left: 46, right: 14, top: 14, height: '58%' },
+        { left: 46, right: 14, top: '74%', height: '16%' },
+      ],
+      tooltip: {
+        trigger: 'axis', backgroundColor: 'rgba(28,28,30,.92)', borderWidth: 0,
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (ps) => {
+          if (!ps || !ps.length) return '';
+          const i = ps[0].dataIndex;
+          return xs[i] + '<br/>现价 <b>' + prices[i].toFixed(2) + '</b><br/>均价 ' +
+            avgs[i].toFixed(2) + '<br/>量 ' + Math.round(pts[i].vol).toLocaleString() + ' 手';
+        },
+      },
+      xAxis: [
+        { type: 'category', data: xs, gridIndex: 0, boundaryGap: false,
+          axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+          axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false } },
+        { type: 'category', data: xs, gridIndex: 1, boundaryGap: false,
+          axisLine: { lineStyle: { color: '#8e8e93', width: .5 } },
+          axisTick: { show: false },
+          axisLabel: { color: '#8e8e93', fontSize: 10,
+            interval: (i, v) => ['09:30', '10:00', '10:30', '11:00', '13:00', '14:00', '14:30'].indexOf(v) >= 0 },
+          splitLine: { show: false } },
+      ],
+      yAxis: [
+        { type: 'value', scale: true, gridIndex: 0,
+          splitLine: { lineStyle: { color: 'rgba(142,142,147,.18)' } },
+          axisLabel: { color: '#8e8e93', fontSize: 10 } },
+        { type: 'value', gridIndex: 1, splitLine: { show: false },
+          axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false } },
+      ],
+      series: [
+        { name: '现价', type: 'line', data: prices, symbol: 'none',
+          lineStyle: { width: 1.4, color: '#007aff' },
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: 'rgba(0,122,255,.10)' },
+                         { offset: 1, color: 'rgba(0,122,255,0)' }] } },
+          markLine: m.pre > 0 ? { silent: true, symbol: 'none',
+            lineStyle: { color: '#8e8e93', width: 1, type: 'dashed' },
+            label: { show: true, position: 'end', color: '#8e8e93', fontSize: 9,
+              formatter: () => m.pre.toFixed(2) },
+            data: [{ yAxis: m.pre }] } : undefined },
+        { name: '均价', type: 'line', data: avgs, symbol: 'none',
+          lineStyle: { width: 1.2, color: '#ff9500' }, emphasis: { disabled: true } },
+        { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1,
+          data: pts.map((p) => p.vol), barMaxWidth: 4,
+          itemStyle: { color: (p) =>
+            (p.dataIndex === 0 ? '#8e8e93' :
+              (pts[p.dataIndex].price >= pts[p.dataIndex - 1].price ? K_UP : K_DN)) } },
+      ],
+    };
+  }
+
   /** 名称是否带风险标识：ST / *ST / 退市整理（「XX退」）。
    *  ⚠️ 口径与后端 src/pattern/core.py 的 RISK_NAME_PAT 保持一致（v1.19.0）；
    *  不能只判 "ST" —— 退市整理期的股票改名成「XX退」，名称里没有 ST。 */
@@ -343,6 +580,7 @@ window.WBcore = (function () {
     REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
     sort, readSort, writeSort, curField, sortRows, sortTip, drawSortBar,
     mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
+    fetchBarsOne, fetchMinuteOne, barsYearly, klineChartOption, minuteChartOption,
     isRiskName, dataSource, remoteUnavailable,
   };
 })();

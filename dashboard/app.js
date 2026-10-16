@@ -11,10 +11,11 @@
   const { REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
           readSort, curField, sortRows, sortTip, drawSortBar,
           mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
+          fetchBarsOne, fetchMinuteOne, barsYearly, klineChartOption, minuteChartOption,
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.19.1';
+  const APP_VERSION = 'v1.20.0';
 
   const S = {
     data: null,        // data.json
@@ -587,7 +588,7 @@
     $('chartBuy').style.display = 'none';
     $('chartSell').style.display = 'none';
     $('chartRange').style.display = 'none';   // 期货只有加权周线，不提供日线范围切换（v1.17.0）
-    kRange = 'week'; kWeekly = null; kDaily = null;
+    kRange = 'week'; kBars = {}; kMinute = null;
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
     let d = S.fut;
     if (!d) { try { d = await loadFutures(); } catch (e) { d = null; } }
@@ -1006,9 +1007,9 @@
   /* ------------------------------------------------ 周K 图 */
   let kChart = null;
   let kContext = null;
-  let kRange = 'week';        // 图表范围：week（全部周线）/ '100' / '200'（最近 N 个交易日的日线，v1.17.0）
-  let kWeekly = null;         // 当前标的周线（切范围时复用）
-  let kDaily = null;          // 当前标的日线（首次切到日线时抓，当天缓存）
+  let kRange = 'week';        // 图表周期：minute/day/week/month/year（v1.20.0 同花顺式五周期）
+  let kBars = {};             // 周期→OHLCV 缓存（v1.20.0：替代 kWeekly/kDaily，当天复用）
+  let kMinute = null;         // 当日分时缓存 {pre, pts}
 
   /* ---------------- AI 五维投资评价（v1.13.0 引入，v1.15.0 改本地 Key） ----------------
      Key 不再写在 ai_config.js（仓库公开=泄露）。首次访问弹出配置向导，
@@ -1507,67 +1508,78 @@
 
   async function openKline(code, name, ctx) {
     kContext = { code: code, name: name, kind: 'stock', ctx: ctx || null };
-    kRange = 'week';                        // 每次打开默认回到「周线（全部）」
-    kWeekly = null; kDaily = null;
-    $('chartTitle').textContent = name + ' · 周线图';
+    kRange = 'week';                        // 每次打开默认「周K」（系统 60 周线口径）
+    kBars = {}; kMinute = null;
+    $('chartTitle').textContent = name + ' · 周K';
     $('chartMask').classList.add('show');
     $('chartBuy').style.display = '';
     $('chartSell').style.display = '';
     $('chartRange').style.display = '';
-    renderRangeChips();                     // v1.17.0：周线 / 最近100日 / 最近200日
-    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周线…</div>';
+    renderRangeChips();                     // v1.20.0：分时/日K/周K/月K/年K
+    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周K…</div>';
     renderAiIntro();                                  // AI 评价区先就位（缓存命中则直接出结果）
-    const series = await fetchWeeklyOne(code).catch(() => null);
-    if (!series || !series.length) {
+    const bars = await fetchBarsOne(code, 'week').catch(() => null);
+    if (!bars || !bars.length) {
       $('kChart').innerHTML =
-        '<div class="empty">周线数据获取失败<br>请检查网络后重试</div>';
+        '<div class="empty">周K数据获取失败<br>请检查网络后重试</div>';
       return;
     }
-    kWeekly = series;
-    renderKline(code, series, 'week');
-    renderChartStats(code, series);
+    kBars.week = bars;
+    renderKline(code, bars, 'week');
+    renderChartStats(code, bars);
   }
 
-  /* ---------------- 图表范围切换（v1.17.0） ----------------
-     周线看长期趋势（整段历史 + 60 周线），日线看最近 100 / 200 个交易日
-     （蓝线日收盘 + 橙线 60 日线）。日线数据按需抓、当天缓存，切回周线不再请求。 */
+  /* ---------------- 周期切换（v1.20.0 同花顺式） ----------------
+     蜡烛图 + MA5/10/20/60 + 成交量副图，可缩放；分时用腾讯分时接口；
+     年K 由月K 按年聚合（零额外请求）。同周期当天缓存、切回不再请求。 */
   function renderRangeChips() {
     const box = $('chartRange');
     if (!box) return;
     box.innerHTML = '';
-    [['week', '周线（全部）'], ['100', '最近100日'], ['200', '最近200日']].forEach((kv) => {
-      const b = el('button', 'chip' + (kRange === kv[0] ? ' on' : ''), kv[1]);
-      b.type = 'button';
-      b.dataset.range = kv[0];
-      b.addEventListener('click', () => switchRange(kv[0]));
-      box.appendChild(b);
-    });
+    [['minute', '分时'], ['day', '日K'], ['week', '周K'], ['month', '月K'], ['year', '年K']]
+      .forEach((kv) => {
+        const b = el('button', 'chip' + (kRange === kv[0] ? ' on' : ''), kv[1]);
+        b.type = 'button';
+        b.dataset.range = kv[0];
+        b.addEventListener('click', () => switchRange(kv[0]));
+        box.appendChild(b);
+      });
   }
+
+  const RANGE_TITLE = { minute: ' · 分时', day: ' · 日K', week: ' · 周K', month: ' · 月K', year: ' · 年K' };
 
   async function switchRange(id) {
     if (!kContext || id === kRange) return;
     kRange = id;
     renderRangeChips();
-    if (id === 'week') {
-      $('chartTitle').textContent = kContext.name + ' · 周线图';
-      if (kWeekly) renderKline(kContext.code, kWeekly, 'week');
-      writeChartNote(false);
+    $('chartTitle').textContent = kContext.name + RANGE_TITLE[id];
+    if (id === 'minute') {
+      $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载分时…</div>';
+      if (!kMinute) kMinute = await fetchMinuteOne(kContext.code).catch(() => null);
+      if (!kMinute || !kMinute.pts.length) {
+        $('kChart').innerHTML = '<div class="empty">分时数据获取失败<br>（收盘日都有，请检查网络后重试）</div>';
+        return;
+      }
+      renderMinute(kMinute);
+      writeChartNote('minute');
       return;
     }
-    const n = id === '100' ? 100 : 200;
-    $('chartTitle').textContent = kContext.name + ' · 最近' + n + '日（日线）';
-    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载日线…</div>';
-    if (!kDaily) kDaily = await fetchDailyOne(kContext.code).catch(() => null);
-    if (!kDaily || !kDaily.length) {
-      $('kChart').innerHTML =
-        '<div class="empty">日线数据获取失败<br>请检查网络后重试（点「周线（全部）」可回到周线）</div>';
+    const src = (id === 'year') ? 'month' : id;
+    $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载' +
+      RANGE_TITLE[id].slice(2) + '…</div>';
+    if (!kBars[src]) kBars[src] = await fetchBarsOne(kContext.code, src).catch(() => null);
+    const srcBars = kBars[src];
+    if (!srcBars || !srcBars.length) {
+      $('kChart').innerHTML = '<div class="empty">' + RANGE_TITLE[id].slice(2) +
+        '数据获取失败<br>请检查网络后重试</div>';
       return;
     }
-    renderKline(kContext.code, kDaily, id);
-    writeChartNote(true);
+    const bars = (id === 'year') ? barsYearly(srcBars) : srcBars;
+    renderKline(kContext.code, bars, id);
+    writeChartNote(id);
   }
 
-  function renderKline(code, series, mode) {
+  function renderKline(code, bars, mode) {
     const node = $('kChart');
     // 必须先销毁旧实例再重建：上一张图的画布已被 innerHTML 清空，
     // 复用旧实例会画到已脱离 DOM 的画布上 → 第二次打开看不到图
@@ -1575,25 +1587,17 @@
     node.innerHTML = '';
     kChart = initChart(node);
     if (!kChart) return;
-    const daily = (mode === '100' || mode === '200');
-    // 均线先在完整序列上算，再截取窗口 —— 否则窗口开头 59 天会没有均线
-    const mAll = ma(series.map((d) => d.close), 60);
-    let xs, closes, m60;
-    if (daily) {
-      const n = mode === '100' ? 100 : 200;
-      const from = Math.max(0, series.length - n);
-      xs = series.slice(from).map((d) => d.day);
-      closes = series.slice(from).map((d) => d.close);
-      m60 = mAll.slice(from);
-    } else {
-      xs = series.map((d) => d.week);
-      closes = series.map((d) => d.close);
-      m60 = mAll;
-    }
-
-    // B/S 买卖点按周记录，只在周线视图标注（日线视图不硬凑）
-    const marks = daily ? { buys: [], sells: [] }
-      : ((window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code, xs)) || { buys: [], sells: [] });
+    // 均线先在完整收盘序列上算，再截取窗口 —— 否则窗口开头会没有均线
+    const closes = bars.map((b) => b.close);
+    const mas = {};
+    [[5, 'ma5'], [10, 'ma10'], [20, 'ma20'], [60, 'ma60']].forEach((kv) => {
+      mas[kv[1]] = ma(closes, kv[0]);
+    });
+    // B/S 买卖点按周记录，只在周K 视图标注（其他周期不硬凑）
+    const marks = mode === 'week'
+      ? ((window.WB_ACCOUNT && window.WB_ACCOUNT.marksFor(code, bars.map((b) => b.d)))
+         || { buys: [], sells: [] })
+      : { buys: [], sells: [] };
     const buyPts = marks.buys.map((m) => ({
       name: 'B', coord: [m.week, m.price],
       value: 'B', symbol: 'pin', symbolSize: 34,
@@ -1604,51 +1608,75 @@
       value: 'S', symbol: 'pin', symbolSize: 34,
       itemStyle: { color: '#34c759' }, label: { color: '#fff', fontSize: 11, fontWeight: 700 },
     }));
-
-    kChart.setOption(weeklyChartOption(xs, closes, m60, {
-      closeLabel: daily ? '日收盘' : '周收盘',
-      maLabel: daily ? '60 日线' : '60 周线',
-      color: '#007aff',
-      areaTop: 'rgba(0,122,255,.16)', areaBottom: 'rgba(0,122,255,0)',
-      fmt: (v) => v.toFixed(2),
+    kChart.setOption(klineChartOption(bars, {
+      zoom: mode === 'day' ? 120 : 0,       // 日K 默认显示最近 120 根，可缩放
+      mas: mas,
+      volUnit: ' 手',
       markPoint: buyPts.concat(sellPts),
     }));
+    node.dataset.range = mode;              // 供测试判断当前图属于哪个周期
     kChart.resize();
   }
 
-  function renderChartStats(code, series) {
-    const last = series[series.length - 1];
-    const closes = series.map((d) => d.close);
-    const m60 = ma(closes, 60);
+  function renderMinute(m) {
+    const node = $('kChart');
+    if (kChart && !kChart.isDisposed()) kChart.dispose();
+    node.innerHTML = '';
+    kChart = initChart(node);
+    if (!kChart) return;
+    kChart.setOption(minuteChartOption(m, {}));
+    node.dataset.range = 'minute';
+    kChart.resize();
+  }
+
+  function renderChartStats(code, bars) {
+    const last = bars[bars.length - 1];
+    const m60 = ma(bars.map((b) => b.close), 60);
     const maNow = m60[m60.length - 1];
     const dev = maNow ? (last.close / maNow - 1) * 100 : null;
     const st = (S.static || {});
     const ind = (st.industry || {})[code] || '—';
     const q = S.quotes[code];
     $('chartStats').innerHTML =
-      metric('这周收盘价', num(last.close, 2), last.week) +
+      metric('这周收盘价', num(last.close, 2), last.d) +
       metric('60 周平均价', num(maNow, 2), dev == null ? '' : '偏离 ' + pct(dev, 2)) +
       metric('所属行业', ind, q ? '现在的价格 ' + num(q[0], 2) : '');
-    writeChartNote(kRange !== 'week');     // v1.17.0：日线视图换说明文案
+    writeChartNote(kRange);     // v1.20.0：按当前周期给说明
   }
 
-  /* 图下说明：周线 / 日线两套文案（v1.17.0） */
-  function writeChartNote(daily) {
-    $('chartNote').innerHTML = daily
-      ? '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是<b>每天</b>的收盘价，' +
-        '<b style="color:#ff9500">橙线</b>是「60 日平均价」（中期平均价），看的是最近这段日线走势。<br/>' +
-        '上面指标卡里的「60 周平均价」仍是系统判定用的<b>长期口径</b>（每周收盘价取 60 周平均），' +
-        '日线图只是让你把最近这段看得更细。<br/>' +
-        '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
-        '和系统判断用的口径算出来结论完全一致。<br/>' +
-        '图上的 <b>B / S</b> 买卖点按周记录，只在周线图显示。'
-      : '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是每周的收盘价，' +
-        '<b style="color:#ff9500">橙线</b>是「60 周平均价」（长期平均价）。' +
-        '蓝线从下面爬回来靠近橙线，就是「今天」页里提醒你的那种情况；' +
-        '蓝线跌破橙线，说明还在走弱。<br/>' +
-        '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
-        '和系统判断用的口径算出来结论完全一致。<br/>' +
-        '图上的 <b>B / S</b> 是你自己在模拟账户里记的买入 / 卖出点。';
+  /* 图下说明：各周期一套文案（v1.20.0） */
+  function writeChartNote(period) {
+    const common = '图上价格用的是<b>前复权</b>口径（把历史分红送股折算掉），只改变价格刻度，' +
+      '和系统判断用的口径算出来结论完全一致。<br/>' +
+      '图上的 <b>B / S</b> 是你自己在模拟账户里记的买入 / 卖出点（按周记录，在周K 显示）。';
+    if (period === 'minute') {
+      $('chartNote').innerHTML =
+        '<b>怎么看这张图</b>：<b style="color:#007aff">蓝线</b>是<b>今天每分钟</b>的价格，' +
+        '<b style="color:#ff9500">黄线</b>是当日均价（至今的平均成交价），灰色虚线是昨收。<br/>' +
+        '下面的柱子是每分钟成交量，红涨绿跌。<br/>' +
+        '判断系统信号请看<b>周K</b>——那里有「60 周平均价」长期口径。';
+      return;
+    }
+    if (period === 'week') {
+      $('chartNote').innerHTML =
+        '<b>怎么看这张图</b>：红柱涨、绿柱跌（每根 = 一周）。' +
+        '<b style="color:#ff9500">橙线</b>是 <b>MA60＝「60 周平均价」</b>（长期平均价，系统判定口径）——' +
+        '周K 从下面爬回来上穿橙线，就是「今天」页里提醒你的那种情况；' +
+        '跌破橙线说明还在走弱。黄/紫/蓝细线是 MA5/10/20 短中期平均价。<br/>' +
+        '下面的柱子是每周成交量（手）。可以<b>在图上滚轮/双指缩放</b>，拖动看更早的历史。' + common;
+      return;
+    }
+    const n = { day: '天', month: '月', year: '年' }[period] || '天';
+    $('chartNote').innerHTML =
+      '<b>怎么看这张图</b>：红柱涨、绿柱跌（每根 = 一' + n + '）。' +
+      '黄/紫/蓝/橙细线是 MA5 / MA10 / MA20 / MA60——' +
+      (period === 'month' || period === 'year'
+        ? '这里的均线口径跟着周期走（月K 的 MA60 是 60 个月平均价）。'
+        : '日线图的 MA60 是「60 日平均价」，<b>不是</b>系统判定用的 60 周口径。') + '<br/>' +
+      '下面的柱子是每' + n + '成交量（手）。可以<b>在图上滚轮/双指缩放</b>，拖动看更早的历史。' +
+      (period === 'day'
+        ? '日K 默认显示最近 120 个交易日。<br/>'
+        : '<br/>') + common;
   }
 
   /* ------------------------------------------------ 弹层与 Tab */
