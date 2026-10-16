@@ -389,7 +389,26 @@ def run_notify(sha: str):
         except Exception as exc:                       # noqa: BLE001
             print(f"[pattern] 段落组装失败：{type(exc).__name__} {exc}")
 
-    extra = [t for t in (fut_txt, pat_txt) if t]
+    # v1.21.0：重要财经新闻栏目（同花顺 / 金十数据 / 新浪财经三源）。
+    # 任一源失败由 news 内部降级为栏目内提示，这里再兜一层，确保永不阻断主链路。
+    news_txt, news_n = "", 0
+    try:
+        from . import news
+        news_txt, news_n = news.build_section()
+    except Exception as exc:                           # noqa: BLE001
+        print(f"[news] 栏目生成失败：{type(exc).__name__} {exc}")
+
+    # 纯新闻（A 股/期货/形态都空）只在**收盘确认轮**单独成条推送：
+    # Server酱每日仅 5 条额度，盘中 4 个扫描槽若都能因新闻单独推送，
+    # 当天额度会被新闻占满，真正的预警反而推不出去。
+    alone_ok = (res.get("mode") == "confirm"
+                and bool((load().get("news") or {}).get("push_alone", False)))
+    if news_txt and not res["n"] and not fut_txt and not pat_txt and not alone_ok:
+        print("[notify] 仅有财经新闻、且非收盘确认轮（或 news.push_alone=false），"
+              "不单独推送（不占额度）")
+        news_txt = ""
+
+    extra = [t for t in (fut_txt, pat_txt, news_txt) if t]
     if extra:
         body = "\n\n---\n\n".join(extra)
         if res["n"]:
@@ -397,8 +416,10 @@ def run_notify(sha: str):
         else:
             if fut_txt:
                 title = f"【期货60周线】{len(fut_codes)} 个品种靠近加权均线"
-            else:
+            elif pat_txt:
                 title = f"【右侧反转形态】{pat_n} 只候选（追涨风险提示）"
+            elif news_txt:
+                title = f"【重要财经新闻】{news_n} 条"
             desp = body
     elif not res["n"]:
         print("[notify] A 股、期货与形态均无内容，跳过推送（不占额度）")
