@@ -287,7 +287,9 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
               "day": day, "n": int(len(trig)), "charts": {}}
     if len(trig):
         OUT.mkdir(parents=True, exist_ok=True)
-        trig[MSG_FIELDS].copy().to_csv(PENDING_CSV)
+        # 云端快照在部分路径会丢失索引名称。固定写出 code 列，
+        # 否则 notify 的 read_csv(index_col="code") 无法读取待推送名单。
+        trig[MSG_FIELDS].copy().to_csv(PENDING_CSV, index_label="code")
     # 图表：为当日全部触发（含已推过的）出图，供看板点击查看
     if len(trig_all) and _chart_enabled():
         from .chart import render_weekly_chart
@@ -367,7 +369,11 @@ def run_notify(sha: str):
     trig = None
     if res["n"] and PENDING_CSV.exists():
         import pandas as pd
-        trig = pd.read_csv(PENDING_CSV, index_col="code")
+        pending = pd.read_csv(PENDING_CSV)
+        # 兼容此前已生成的 CSV：旧文件首列可能没有列名，但仍保存股票代码。
+        code_col = "code" if "code" in pending.columns else pending.columns[0]
+        trig = pending.set_index(code_col)
+        trig.index.name = "code"
         base = load()["jump"].get("chart_base_url", "").rstrip("/")
         chart_urls = {code: f"{base}@{sha}/{rel}"
                       for code, rel in res["charts"].items()}
