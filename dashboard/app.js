@@ -13,7 +13,7 @@
           mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.17.0';
+  const APP_VERSION = 'v1.18.0';
 
   const S = {
     data: null,        // data.json
@@ -876,15 +876,16 @@
     $('trendHint').textContent = tr.length ? (tr[0].day.slice(5) + ' ~ ' + tr[tr.length - 1].day.slice(5)) : '';
     drawTrend(tr);
 
-    // 运行流水
+    // 运行流水（v1.18.0：默认只亮最近 3 条，其余折叠，可展开/收起）
     const list = $('runList');
     list.innerHTML = '';
     const runs = (d.runs || []).slice(0, 12);
     if (!runs.length) {
       list.appendChild(el('div', 'empty', '<div class="big">◌</div>暂无运行记录'));
+      renderAiLog();
       return;
     }
-    runs.forEach((r) => {
+    const rows = runs.map((r) => {
       const st = r.status === 'completed' ? (r.conclusion === 'success' ? 'ok' : 'fail') : 'run';
       const badge = st === 'ok' ? '<span class="tag down">跑成功了</span>'
         : st === 'fail' ? '<span class="tag up">' + esc(r.conclusion || '没跑成') + '</span>'
@@ -899,7 +900,27 @@
         '<div class="s muted">' + (r.status === 'completed' ? '已结束' : '还在跑') + '</div></div>';
       if (r.url) row.addEventListener('click', () => window.open(r.url, '_blank'));
       list.appendChild(row);
+      return row;
     });
+
+    if (rows.length > 4) {                     // 4 条以内没必要折叠
+      const VIS = 3;
+      const togg = el('div', 'row more-row tap');
+      const apply = (open) => {
+        rows.forEach((row, i) => { row.style.display = (open || i < VIS) ? '' : 'none'; });
+        togg.innerHTML = '<span class="muted" style="margin:0 auto">' +
+          (open ? '▲ 收起，只看最近 ' + VIS + ' 条'
+                : '▼ 还有更早的 ' + (rows.length - VIS) + ' 条任务') + '</span>';
+      };
+      let open = localStorage.getItem('wb.runsOpen') === '1';
+      togg.addEventListener('click', () => {
+        open = !open;
+        localStorage.setItem('wb.runsOpen', open ? '1' : '0');
+        apply(open);
+      });
+      list.appendChild(togg);
+      apply(open);
+    }
 
     renderAiLog();     // v1.17.0：AI 调用日志（请求 / 时间 / 消耗 Token）
   }
