@@ -10,10 +10,11 @@
   const C = window.WBcore;
   const { REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
           readSort, curField, sortRows, sortTip, drawSortBar,
-          mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric } = C;
+          mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
+          isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.18.0';
+  const APP_VERSION = 'v1.19.0';
 
   const S = {
     data: null,        // data.json
@@ -193,10 +194,21 @@
     }
   }
 
+  /* ---------------- 扫描结果展示层筛除 ST / 退市股（v1.19.0） ----------------
+     按用户要求：ST、*ST、退市整理期（名称含「退」）的股票不出现在扫描结果里。
+     ⚠️ 只在看板这一层筛除，后端 store/state/latest_triggers.json 的原始数据不动，
+     所以随时可以回到完整名单（把这里的过滤去掉即可）。 */
+  function trigVisibleRows() {
+    const all = (S.data && S.data.triggers && S.data.triggers.rows) || [];
+    const rows = all.filter((r) => !isRiskName(r.name));
+    return { rows: rows, hidden: all.length - rows.length };
+  }
+
   function renderToday() {
     const d = S.data;
     const t = d.triggers || {};
-    const rows = t.rows || [];
+    const tv = trigVisibleRows();
+    const rows = tv.rows;
     const today = d.today;
 
     // 近一月历史触发入口卡（数据来自 data.json 的 hist 摘要字段）
@@ -285,7 +297,9 @@
 
   /** 今日触发明细列表（排序变化时单独重画，不动 Hero） */
   function renderTrigs() {
-    const rows = (S.data && S.data.triggers && S.data.triggers.rows) || [];
+    const tv = trigVisibleRows();
+    const rows = tv.rows;
+    const hidden = tv.hidden;
     const list = $('trigList');
     list.innerHTML = '';
     if (!rows.length) {
@@ -299,9 +313,14 @@
     const st = S.sort.trig;
     const sorted = sortRows(rows, TRIG_SORTS, st);
     $('trigHint').textContent =
-      '共 ' + rows.length + ' 只 · ' + sortTip(curField(TRIG_SORTS, st), st.dir);
+      '共 ' + rows.length + ' 只 · ' + sortTip(curField(TRIG_SORTS, st), st.dir) +
+      (hidden ? ' · 已隐藏 ' + hidden + ' 只 ST' : '');
     sorted.forEach((r, i) => list.appendChild(trigRow(r, i)));
     $('trigNote').innerHTML =
+      (hidden
+        ? '<b>已按你的设置隐藏 ' + hidden + ' 只 ST / 退市风险股</b>' +
+          '（名称里带 ST 或「退」的，不在这份名单里显示）。<br/>'
+        : '') +
       '<b>这些数字怎么看</b><br/>' +
       '「偏离 1.2%」＝现价比 60 周平均线高 1.2%；' +
       '「量比 2.0」＝今天的成交额是最近 20 天平均的 2 倍；' +
@@ -923,6 +942,7 @@
     }
 
     renderAiLog();     // v1.17.0：AI 调用日志（请求 / 时间 / 消耗 Token）
+    renderAiSwitch();  // v1.19.0：AI 调用总开关（暂停 / 恢复）
   }
 
   let trendChart = null;
@@ -994,6 +1014,43 @@
 
   const AI_LS_KEY = 'wb.ai.cfg';
 
+  /* —— AI 调用总开关（v1.19.0）——
+     用户要求「暂停调用 AI 模型」：默认关闭 → 一律不发请求、不消耗 Token。
+     默认值写在 ai_config.js 的 aiPaused；使用者在「系统」页可一键恢复/再暂停，
+     他的选择记在本机 localStorage（wb.ai.paused），不改代码、下次打开仍生效。 */
+  const AI_PAUSE_LS = 'wb.ai.paused';
+
+  function aiPaused() {
+    const v = localStorage.getItem(AI_PAUSE_LS);
+    if (v === '1') return true;
+    if (v === '0') return false;
+    return !!(window.AI_CFG && window.AI_CFG.aiPaused);   // 本机没选过 → 用配置里的默认值
+  }
+
+  /** 切换总开关。恢复时若还没配置 Key，顺手把配置向导叫出来。 */
+  function aiSetPaused(on) {
+    try { localStorage.setItem(AI_PAUSE_LS, on ? '1' : '0'); } catch (e) { /* 隐私模式 */ }
+    if (on && $('aiGateMask')) $('aiGateMask').classList.remove('show');  // 暂停后不留遮罩
+    renderAiSwitch();
+    renderAiIntro();                                       // 弹层开着的话同步刷新卡片
+    if (!on && !aiCfgOk()) aiGateInit(true);               // 恢复但没 Key → 直接给向导
+  }
+
+  /* —— 免配置试用（v1.19.0）——
+     向导里的「免配置试用」= 先不填 Key 也能正常看板；等真正要用模型
+     （点「生成 AI 五维评价」）时再把向导叫出来。记在本机（wb.ai.skipped），
+     配置好 Key 后此标记自动失效。 */
+  const AI_SKIP_LS = 'wb.ai.skipped';
+
+  function aiSkipped() {
+    try { return localStorage.getItem(AI_SKIP_LS) === '1'; } catch (e) { return false; }
+  }
+
+  function aiGateSkip() {
+    try { localStorage.setItem(AI_SKIP_LS, '1'); } catch (e) { /* 隐私模式 */ }
+    $('aiGateMask').classList.remove('show');
+  }
+
   /* —— 体验 Key（v1.16.0）——
      站长把自己的小额测试 Key 藏在 ai_config.js（分两段 base64，不整串明文）。
      访客点「申请测试 Key」→ 拼回原文隐匿填入（输入框是 password），
@@ -1020,6 +1077,7 @@
   /** 过期收尾：清配置 → 弹回向导 → 提示已过期（未过期则不动） */
   function aiTrialExpire() {
     if (!aiTrialSweep()) return;
+    if (aiPaused()) return;        // v1.19.0：总开关关着就别再弹向导打扰人
     aiGateInit(true);
     const m = $('aiGateMsg');
     if (m) m.innerHTML = '<span style="color:var(--orange)">测试 Key 已过有效期（10 分钟），' +
@@ -1087,6 +1145,28 @@
     try { localStorage.setItem(AI_LOG_KEY, JSON.stringify(list.slice(0, AI_LOG_MAX))); }
     catch (e) { /* 隐私模式存不了就算了 */ }
     renderAiLog();
+  }
+
+  /** v1.19.0：AI 调用总开关（系统页「AI 调用记录」卡顶部） */
+  function renderAiSwitch() {
+    const node = $('aiSwitchRow');
+    if (!node) return;
+    const paused = aiPaused();
+    node.innerHTML =
+      '<div class="grow">' +
+        '<div class="t1">AI 模型调用 ' +
+          (paused ? '<span class="tag orange">已暂停</span>'
+                  : '<span class="tag down">使用中</span>') +
+        '</div>' +
+        '<div class="t2" style="white-space:normal">' + (paused
+          ? '暂停期间<b>一次请求也不会发</b>，不消耗任何 Token；' +
+            '看板其它功能（列表、图表、期货、历史）都不受影响。'
+          : '点「生成 AI 五维评价」会<b>真实调用模型并计费</b>；不需要时可随时暂停。') +
+        '</div>' +
+      '</div>' +
+      '<div class="r"><button type="button" class="btn sec sm" id="aiPauseBtn">' +
+        (paused ? '恢复使用' : '暂停使用') + '</button></div>';
+    $('aiPauseBtn').addEventListener('click', () => aiSetPaused(!paused));
   }
 
   /** 各家 usage 字段略有差异，统一成 { p, c, t }（取不到就是 null，如实显示） */
@@ -1211,11 +1291,28 @@
 
   function aiIdle(code) {
     $('aiDims').innerHTML = '';
+    if (aiPaused()) {                       // v1.19.0：总开关关着 → 只说明情况，不发请求
+      $('aiHint').textContent = '已暂停';
+      $('aiSummary').innerHTML =
+        '<b>AI 评价当前已暂停</b>：设置为不调用任何 AI 模型，' +
+        '所以这里不会生成评价，也不会消耗 Token。看板其它功能都照常。<br/>' +
+        '需要时可在「系统」页的「AI 调用记录」里一键恢复使用。';
+      const back = el('button', 'btn sec block');
+      back.textContent = '恢复使用 AI 评价';
+      back.addEventListener('click', () => aiSetPaused(false));
+      $('aiDims').appendChild(back);
+      return;
+    }
     $('aiHint').textContent = '消息面 · 资金面 · 技术面 · 安全边际 · 行业';
     if (!aiCfgOk()) {
+      // v1.19.0 免配置试用：按钮照常给，点了才弹向导要 Key（用到模型时才配置）
       $('aiSummary').innerHTML =
-        'AI 评价还没配置：点右上「AI 设置」选模型、填你自己的 API Key' +
-        '（只保存在本机浏览器，本站服务器不经手）。';
+        '还没配置 AI：点下面按钮选模型、填你自己的 API Key' +
+        '（只保存在本机浏览器，本站服务器不经手），测通后即可生成。';
+      const btn = el('button', 'btn sec block');
+      btn.textContent = '生成 AI 五维评价';
+      btn.addEventListener('click', () => aiGateInit(true));   // 按需弹配置
+      $('aiDims').appendChild(btn);
       return;
     }
     $('aiSummary').innerHTML = '';
@@ -1226,6 +1323,10 @@
   }
 
   async function aiRun(code) {
+    if (aiPaused()) {                       // 双保险：任何路径都不越过总开关
+      aiIdle(code);
+      return;
+    }
     const ctx = kContext && kContext.ctx;
     $('aiDims').innerHTML =
       '<div class="loading"><span class="spinner"></span> AI 正在从五个维度分析…（约 5~15 秒）</div>';
@@ -1278,6 +1379,9 @@
   function aiGateInit(force) {
     const mask = $('aiGateMask');
     if (!mask) return;
+    // v1.19.0：AI 已暂停 → 不再自动弹向导拦人（首次访客也能正常看板）；
+    // 手动点「AI 设置」仍可打开，且此时允许关闭，避免把人堵在遮罩里。
+    if (!force && aiPaused()) return;
     const sel = $('aiGatePreset');
     if (!sel.options.length) {
       (window.AI_CFG.presets || []).forEach((p) => {
@@ -1294,15 +1398,22 @@
       $('aiGateKey').value = c.apiKey || '';
     }
     const first = !aiCfgOk();
-    $('aiGateClose').style.display = first ? 'none' : '';
-    mask.dataset.dismissable = first ? '0' : '1';
+    const locked = first && !aiPaused();      // 暂停时即使未配置也能关掉
+    $('aiGateClose').style.display = locked ? 'none' : '';
+    mask.dataset.dismissable = locked ? '0' : '1';
     sel.onchange = aiGatePresetChange;
     aiGatePresetChange();     // 按当前选中项预填 baseUrl/model
-    if (first || force) mask.classList.add('show');   // 只拦未配置者；「AI 设置」强制打开
+    // 弹出条件：手动打开，或（未配置 且 没选过「免配置试用」）
+    if (force || (first && !aiSkipped())) mask.classList.add('show');
   }
 
   async function aiGateTest() {
     const msg = $('aiGateMsg');
+    if (aiPaused()) {          // v1.19.0：暂停期间不发任何请求
+      msg.innerHTML = '<span style="color:var(--orange)">AI 调用当前处于暂停状态，' +
+        '先到「系统」页恢复使用，再测连通。</span>';
+      return;
+    }
     const p = (window.AI_CFG.presets || [])
       .find((x) => x.id === $('aiGatePreset').value);
     const baseUrl = ($('aiGateUrl').value || '').trim();
@@ -1334,9 +1445,11 @@
         presetId: p ? p.id : 'custom', baseUrl: baseUrl, model: model,
         apiKey: apiKey, okDay: new Date().toISOString().slice(0, 10),
       }));
+      try { localStorage.removeItem(AI_SKIP_LS); } catch (e) { /* 隐私模式 */ }
       aiLogAdd({ at: aiNow(), req: '连通测试（' + model + '）', model: model,
                  tokens: aiTokens(j && j.usage), ok: true });
       msg.innerHTML = '<span style="color:var(--up)"><b>✅ 连通成功</b>，配置已保存在本浏览器。</span>';
+      renderAiIntro();          // v1.19.0：刚配置好 → 卡片立刻切成可用状态（原先要重开弹层才刷新）
       setTimeout(() => { $('aiGateMask').classList.remove('show'); }, 450);
     } catch (e) {
       aiLogAdd({ at: aiNow(), req: '连通测试（' + (model || '—') + '）', model: model || '—',
@@ -1355,6 +1468,8 @@
     $('aiGateClose').addEventListener('click', () => mask.classList.remove('show'));
     const tb = $('aiGateTrial');
     if (tb) tb.addEventListener('click', aiGateTrial);
+    const skip = $('aiGateSkip');
+    if (skip) skip.addEventListener('click', aiGateSkip);
     mask.addEventListener('click', (e) => {
       if (e.target === mask && mask.dataset.dismissable === '1') mask.classList.remove('show');
     });

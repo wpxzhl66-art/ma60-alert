@@ -9,10 +9,10 @@
   const C = window.WBcore;
   const { $, el, esc, num, pct, cls, metric, amtWan,
           curField, sortRows, sortTip, mountSort,
-          loadJSON, fetchWeeklyOne, weeklyChartOption, ma } = C;
+          loadJSON, fetchWeeklyOne, weeklyChartOption, ma, isRiskName } = C;
 
   // 交付物版本号：每次改动递增（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.18.0';
+  const APP_VERSION = 'v1.19.0';
 
   const S = {
     d: null,          // history.json
@@ -139,6 +139,7 @@
     const q = S.q.trim().toLowerCase();
     return (S.d.events || []).filter((e) => {
       const s = stkOf(e.c);
+      if (isRiskName(s.n)) return false;        // v1.19.0：ST / 退市股不显示（与「策略一」口径一致）
       if (S.scope === 'above' && s.above !== true) return false;
       if (S.scope === 'below' && s.above !== false) return false;
       if (!q) return true;
@@ -246,9 +247,17 @@
         sortTip(curField(STOCK_SORTS, st), st.dir);
     }
 
-    $('listNote').innerHTML = S.view === 'day'
+    /* v1.19.0：ST / 退市股不显示，如实告知隐藏了多少条（与「策略一」同一口径） */
+    const stHidden = (S.d.events || [])
+      .filter((e) => isRiskName(stkOf(e.c).n)).length;
+    const stTip = stHidden
+      ? '<br/><b>已隐藏 ' + stHidden + ' 条 ST / 退市风险股记录</b>' +
+        '（名称里带 ST 或「退」的，不在这份名单里显示）。'
+      : '';
+    $('listNote').innerHTML = (S.view === 'day'
       ? '点任意一行，就能看这只股票的周线图、以及它是在哪一周被扫出来的。'
-      : '右边两个数字：现在比「长期平均价」高或低多少 / 从第一次被扫出来到现在涨跌了多少。点一下看周线图。';
+      : '右边两个数字：现在比「长期平均价」高或低多少 / 从第一次被扫出来到现在涨跌了多少。点一下看周线图。')
+      + stTip;
   }
 
   function mountSortForView() {

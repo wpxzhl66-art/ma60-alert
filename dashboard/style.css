@@ -188,6 +188,11 @@ a { color: var(--blue); text-decoration: none; }
 .row.more-row { justify-content: center; padding: 10px 16px; }
 .row.more-row:active { background: var(--card2); }
 .row.more-row .muted { font-size: 12.5px; cursor: pointer; }
+/* v1.19.0 AI 调用总开关行：卡片顶部，分隔线在下方 */
+.row.switch-row { border-top: none; border-bottom: .5px solid var(--sep2); align-items: flex-start; }
+.row.switch-row .t1 { font-size: 14px; }
+.row.switch-row .t2 { font-size: 12px; line-height: 1.5; margin-top: 3px; }
+.row.switch-row .r .btn { white-space: nowrap; }
 
 .code {
   font-family: var(--mono); font-size: 11.5px; color: var(--text3);

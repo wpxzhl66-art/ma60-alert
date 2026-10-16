@@ -286,6 +286,13 @@ window.WBcore = (function () {
     };
   }
 
+  /** 名称是否带风险标识：ST / *ST / 退市整理（「XX退」）。
+   *  ⚠️ 口径与后端 src/pattern/core.py 的 RISK_NAME_PAT 保持一致（v1.19.0）；
+   *  不能只判 "ST" —— 退市整理期的股票改名成「XX退」，名称里没有 ST。 */
+  function isRiskName(name) {
+    return /ST|退/i.test(String(name == null ? '' : name));
+  }
+
   /** 简单移动平均；窗口未满的位置为 null */
   function ma(arr, n) {
     const out = [];
@@ -302,5 +309,6 @@ window.WBcore = (function () {
     REPO, REMOTE, $, el, esc, num, pct, cls, yi, amtWan, timeAgo,
     sort, readSort, writeSort, curField, sortRows, sortTip, drawSortBar,
     mountSort, loadJSON, fetchWeeklyOne, fetchDailyOne, weeklyChartOption, ma, metric,
+    isRiskName,
   };
 })();

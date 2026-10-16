@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.18.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.19.0</span>
   </div>
 </header>
 
@@ -176,6 +176,7 @@
         <h2>每次调用 AI 的记录</h2>
         <button type="button" class="trial-btn" id="aiLogClear">清空记录</button>
       </div>
+      <div class="row switch-row" id="aiSwitchRow"></div>
       <div class="note" id="aiLogSum">—</div>
       <div class="list" id="aiLogList">
         <div class="loading"><span class="spinner"></span></div>
@@ -387,7 +388,12 @@
         <div class="card-body" id="aiGateMsg" style="padding:12px 14px">还没测试。</div>
       </div>
       <button class="btn block" id="aiGateTest">测试连通并进入</button>
+      <button class="btn sec block" id="aiGateSkip" style="margin-top:10px">免配置试用 · 先逛逛</button>
       <div class="note" style="padding:10px 0 0">
+        选「免配置试用」可以先正常使用看板的所有其它功能；等你在股票弹层里
+        点「生成 AI 五维评价」时，再回到这里配置即可。
+      </div>
+      <div class="note" style="padding:6px 0 0">
         还没有 Key？DeepSeek 充几块钱能用很久：
         <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a>
       </div>
