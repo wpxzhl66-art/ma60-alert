@@ -7,6 +7,33 @@
 
 ---
 
+## [调度 v1.22.0] — 2026-10-17
+
+**非交易日财经要闻汇总 + 可量化的「重要」评分模型**
+
+1. **调度逻辑调整（交易日 / 非交易日分流）**
+   - 交易日（周一至五且有行情）：保持原有流程（盘中扫描 / 收盘确认 / 数据更新 / 推送），
+     新闻仍作为一节附在预警后面。
+   - 非交易日（周末、节假日）：**跳过股票扫描**，改为跑一次**财经要闻汇总** ——
+     刷新看板「最新消息」并按配置把汇总**单独推一条**（`【财经要闻汇总】N 条`）。
+   - `alert.yml`：新增周末 cron（北京 08:50 / 09:50 双点兜底），按 schedule 把轮次
+     映射为 `news`；新增「非交易日财经要闻汇总」与「提交看板新闻与汇总标记」两步。
+   - `slot_gate.py`：周末直接 `run=false`（不排扫描槽位）；新增 `news` 任务分支（占位，
+     真正幂等由 `run_news_summary` 内的 `news_marks.json` 保证）。
+   - 幂等护栏：汇总一天最多推送一次（GitHub cron 抖动 / 外接定时服务补触发不会重复占用额度）。
+2. **可量化的「重要」评分模型（替代原来的隐式打分）**
+   - `src/alert/news.py` 的 `score_news`：`S = 来源权重 W ×（基础分 + 市场影响 + 传播热度）× 时效因子`。
+     四维均可配置：来源权重 `src_weight`、市场影响关键词 K1/K2/K3、传播热度（多源同报 + 源侧重要标记）、
+     时效半衰期 `recency_tau`。
+   - 「重要」判定：`S ≥ important_threshold`（默认 18）**或** 任一源编辑标记重要。
+     看板「重要」小红点与推送口径一致；`news.json` 新增 `score` 字段（前端忽略不影响）。
+   - 配置项全部落在 `alert_config.yaml` 的 `news:` 段（base_score / cap_impact / cap_heat /
+     important_threshold / recency_tau / recency_min / src_weight / off_day_push /
+     off_day_window_hours / off_day_max_items）。
+3. **新入口**：`python -m alert.run_alert --news`；`news.py` 新增 `build_summary()` 与 `--summary` 调试开关。
+
+---
+
 ## [口径统一 v1.21.1] — 2026-10-17
 
 **两套新闻实现合并为一套 + 推送名单剔除 ST / 退市股**

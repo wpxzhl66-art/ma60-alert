@@ -120,6 +120,12 @@ def _emit(out: dict) -> None:
 def decide() -> None:
     now = _now()
     now_m = now.hour * 60 + now.minute
+    # 周末不安排扫描槽位：直接跳过。非交易日（含周末/节假日）的财经要闻汇总
+    # 由 news 任务 + 交易日校验（skip=true）+ news_marks 幂等共同处理，与扫描互不干扰。
+    if now.weekday() >= 5:
+        _emit({"run": "false", "slot": "", "mode": ""})
+        print("[gate] 周末，无扫描槽位，跳过", file=sys.stderr)
+        return
     slot, delay, late = _decide_slot()
     # 模式按**实际执行时间**定，而不是按槽位名 —— 延迟到收盘后执行就该算收盘确认，
     # 否则晚上补扫出来的数据会被标成「盘中」，语义是错的。
@@ -196,6 +202,12 @@ def main() -> None:
         # 「闸门被跳过时输出恰好为空字符串」的脆弱语义（BUG #5）
         _emit({"run": "na", "slot": "", "mode": ""})
         print("[gate] demo 轮：不设闸门（run=na）", file=sys.stderr)
+    elif task == "news":
+        # 非交易日财经要闻汇总：闸门只做占位，真正的「是否今天已汇总」由
+        # run_news_summary 内的 news_marks.json 判定（避免 GitHub cron 抖动重复推送）。
+        _emit({"run": "na", "slot": "", "mode": ""})
+        print("[gate] news 轮（非交易日财经要闻汇总）：由 day-check 与 news_marks 双重判定",
+              file=sys.stderr)
     else:
         decide()
 

@@ -50,7 +50,7 @@ news:
     tonghuashun: true        # 同花顺「今日热点」列表页（GBK，解析 HTML 列表）
     jin10: true              # 金十数据快讯接口（部分网络环境不可达 → 自动降级）
     sina: true               # 新浪财经滚动新闻（roll feed，JSON）
-  window_hours: 24           # 只保留最近 N 小时内发布的新闻
+  window_hours: 24           # 交易日只保留最近 N 小时内发布的新闻
   per_source: 25             # 每个源最多抓多少条原始新闻
   max_items: 8               # 推送栏目最终输出条数
   dashboard_max_items: 15    # 看板 news.json 输出条数
@@ -63,3 +63,19 @@ news:
   push_alone: false          # 仅当有新闻、而 A股/期货/形态都无内容时，
                              # 是否单独推一条（true 时**只在收盘确认轮**生效，
                              # 避免盘中 4 个扫描槽把每日 5 条额度占满）
+  # —— 非交易日财经要闻汇总（--news 模式）——
+  off_day_push: true         # 非交易日是否把要闻汇总单独推送（仍受 push.enabled 与每日额度约束）
+  off_day_window_hours: 48   # 非交易日放宽时间窗（覆盖周末两天）
+  off_day_max_items: 10      # 非交易日汇总输出条数
+  # —— 可量化「重要度」评分模型（见 src/alert/news.py: score_news）——
+  # 最终分 S = 来源权重 W ×（基础分 BASE + 市场影响 S_imp + 传播热度 S_heat）× 时效因子 R
+  base_score: 14             # 基础分：通过源初筛即有的底分
+  cap_impact: 12             # 市场影响分上限（命中 K1(+3)/K2(+2)/K3标题(+2) 累计）
+  cap_heat: 10               # 传播热度分上限（2·(同源数−1) + 4·源侧重要标记）
+  important_threshold: 18    # 重要度阈值：S ≥ 此值（或源侧标记为重要）即认定为「重要」
+  recency_tau: 12            # 时效半衰期（小时）：越新越热
+  recency_min: 0.35          # 时效因子下限（旧闻最少保底的权重）
+  src_weight:                # 来源权重（0~1，取合并后最高者）
+    tonghuashun: 1.0
+    jin10: 1.0
+    sina: 0.9

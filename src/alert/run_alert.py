@@ -24,7 +24,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from . import pusher, quoter, scanner, template
-from .config import load
+from .config import load, state_dir
 from .ma60_base import build_snapshot, load_snapshot
 # 名称风险判定（ST / *ST / 退市整理）全项目唯一真源：
 # 推送名单（run_scan / run_prepare）与形态扫描（pattern.core）共用同一口径。
@@ -448,6 +448,47 @@ def run_notify(sha: str):
         print(f"[notify] 已推送：{title}")
 
 
+def run_news_summary(cloud: bool = False, push: bool = True) -> int:
+    """非交易日财经要闻汇总：刷新看板 news.json，并按配置单独推送一次。
+
+    与交易日的「把新闻附在预警后面」不同，非交易日没有股票触发，
+    于是把新闻**单独成条**推送。一天至多推送一次：用
+    ``store/state/news_marks.json`` 做每日幂等（与扫描槽位同纪律），
+    重复触发（GitHub cron 抖动 / 外接定时服务补触发）不会重复占用推送额度。
+    """
+    from . import news
+    cfg = news._cfg()
+    mark = state_dir() / "news_marks.json"
+    today = date.today().isoformat()
+    try:
+        marks = json.loads(mark.read_text(encoding="utf-8")) if mark.exists() else {}
+    except (OSError, ValueError):
+        marks = {}
+    if marks.get(today):
+        print(f"[news-summary] 今日（{today}）已汇总过，跳过（幂等）")
+        return 0
+    # 1) 刷新看板 news.json（放宽到 48h，覆盖周末两天）
+    eff = dict(cfg)
+    eff["window_hours"] = float(cfg.get("off_day_window_hours", 48))
+    news.build_dashboard(eff)
+    # 2) 生成独立汇总栏目
+    text, n = news.build_summary()
+    # 3) 推送（受 push.enabled 与每日额度约束；pusher 内部已处理 dry-run / 额度）
+    if push and bool(cfg.get("off_day_push", True)) and n:
+        title = f"【财经要闻汇总】{n} 条"
+        ok = pusher.send(title, text)
+        print(f"[news-summary] 推送{'成功' if ok else '未发送（额度/开关）'}：{title}")
+    else:
+        print(f"[news-summary] 生成 {n} 条（未推送：push={push} "
+              f"off_day_push={cfg.get('off_day_push')} n={n}）")
+    # 4) 打标（成功后），交由 git 提交
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    marks[today] = datetime.now().strftime("%H:%M")
+    mark.write_text(json.dumps(marks, ensure_ascii=False, indent=1, sort_keys=True),
+                    encoding="utf-8")
+    return n
+
+
 def run_update_cloud():
     from .cloud_store import update_from_baostock
     update_from_baostock()
@@ -472,6 +513,8 @@ def main():
     ap.add_argument("--prepare", action="store_true")
     ap.add_argument("--notify", action="store_true")
     ap.add_argument("--update-cloud", action="store_true")
+    ap.add_argument("--news", action="store_true",
+                    help="非交易日财经要闻汇总（刷新看板 + 按配置单独推送）")
     ap.add_argument("--cloud", action="store_true", help="用 store 精简仓做快照")
     ap.add_argument("--mode", default="intraday", choices=["intraday", "confirm"])
     ap.add_argument("--sha", default="main")
@@ -496,6 +539,8 @@ def main():
         run_notify(a.sha)
     elif a.update_cloud:
         run_update_cloud()
+    elif a.news:
+        run_news_summary(cloud=a.cloud)
     elif a.demo:
         run_demo(cloud=a.cloud)
     else:

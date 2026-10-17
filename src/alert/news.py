@@ -80,8 +80,9 @@ K1 = ("美联储", "降息", "加息", "降准", "LPR", "央行", "政治局", "
 K2 = ("A股", "港股", "美股", "黄金", "原油", "油价", "IPO", "退市", "停牌", "立案",
       "财报", "业绩", "回购", "减持", "并购", "重组", "涨价", "订单", "政策",
       "监管", "芯片", "半导体", "新能源", "光伏", "房地产", "券商", "银行", "国债")
-#: 突发标记词
+#: 突发标记词（仅看标题，避免正文里随口提一句就加分）
 K3 = ("突发", "紧急", "重磅", "重要", "辟谣", "澄清", "停牌核查", "风险提示")
+K3_RE = re.compile("|".join(re.escape(k) for k in K3))
 
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -156,6 +157,7 @@ class News:
         d = asdict(self)
         d["ts"] = self.ts.strftime("%Y-%m-%d %H:%M:%S")
         d["source_names"] = self.source_names
+        d["score"] = round(self.score, 2)
         return d
 
 
@@ -303,10 +305,9 @@ def fetch_sina(cfg: dict) -> list[News]:
     return out
 
 
-# ---------------------------------------------------------------- 打分 / 相似度 / 合并
-def score_one(n: News, now: datetime) -> float:
-    """分级关键词权重 + 突发标记 + 时效衰减（来自推送侧的排序能力）。"""
-    text = (n.title or "") + " " + (n.summary or "")
+# ---------------------------------------------------------------- 可量化「重要度」评分
+def _impact_score(text: str, cap_impact: float) -> float:
+    """市场影响分（纯影响，不含权重/时效/热度）：命中 K1(+3)/K2(+2)/K3标题(+2)。"""
     s = 0.0
     for k in K1:
         if k in text:
@@ -314,21 +315,58 @@ def score_one(n: News, now: datetime) -> float:
     for k in K2:
         if k in text:
             s += 2.0
-    for k in K3:
-        if k in (n.title or ""):
-            s += 2.0
+    if K3_RE.search(text):
+        s += 2.0
+    return min(s, cap_impact)
+
+
+def _src_weight(n: News, cfg: dict) -> float:
+    """来源权重：取合并后所有来源里的最高权重（多家报道时取最权威那家）。"""
+    sw = cfg.get("src_weight") or {}
+    best = 0.0
+    for s in (n.sources or [n.source]):
+        best = max(best, float(sw.get(s, 1.0)))
+    return best or 1.0
+
+
+def _recency(age_h: float, cfg: dict) -> float:
+    """时效因子 R = max(R_MIN, e^(−age_h/TAU))；越新越热。"""
+    tau = float(cfg.get("recency_tau", 12))
+    rmin = float(cfg.get("recency_min", 0.35))
+    return max(rmin, 2.718281828459045 ** (-age_h / tau))
+
+
+def score_news(n: News, now: datetime, cfg: dict) -> float:
+    """最终重要度评分（可量化、可落地）。
+
+        S = W · (BASE + S_imp + S_heat) · R
+
+    维度与权重（全部可在 alert_config.yaml 的 ``news:`` 段调）：
+      W       来源权重  —— 同花顺/金十 1.0、新浪 0.9（src_weight）；权威源底分更高
+      BASE    基础分    —— 通过源初筛即有的底分（base_score）
+      S_imp   市场影响分 = 命中 K1(+3)/K2(+2)/K3标题(+2)，上限 cap_impact
+      S_heat  传播热度分 = 2·(合并同源数−1) + 4·(源侧重要标记)，上限 cap_heat
+              多源报道同一事件 = 传得开；源侧编辑标记重要 = 背书
+      R       时效因子  = max(R_MIN, e^(−age_h/TAU))；越新越热（recency_tau/min）
+    评分区间约 0–33（W=1、R=1、满分时）。``is_important`` 以阈值为准。
+    """
+    base = float(cfg.get("base_score", 14))
+    cap_imp = float(cfg.get("cap_impact", 12))
+    cap_heat = float(cfg.get("cap_heat", 10))
+    w = _src_weight(n, cfg)
+    s_imp = _impact_score((n.title or "") + " " + (n.summary or ""), cap_imp)
+    s_heat = min(cap_heat,
+                 2.0 * max(0, (n.merged or 1) - 1) + (4.0 if n.flagged else 0.0))
     age_h = max(0.0, (now - n.ts).total_seconds() / 3600.0)
-    s -= min(3.0, age_h / 8.0)          # 24h 内最多扣 3 分，越新越靠前
-    if len(n.summary or "") >= 40:
-        s += 0.5
-    if n.flagged:
-        s += 1.0
-    return round(s, 2)
+    r = _recency(age_h, cfg)
+    return round(w * (base + s_imp + s_heat) * r, 2)
 
 
-def is_important(n: News) -> bool:
-    """是否算「重要」：源侧标记 或 命中关键词表（来自看板侧的过滤能力）。"""
-    return n.flagged or bool(IMPORTANT_RE.search((n.title or "") + " " + (n.summary or "")))
+def is_important(n: News, cfg: dict | None = None) -> bool:
+    """是否「重要」：综合重要度达阈值，或任一权威源编辑标记为重要（源侧背书）。"""
+    cfg = cfg or _cfg()
+    thr = float(cfg.get("important_threshold", 18))
+    return (n.score >= thr) or bool(n.flagged)
 
 
 def _fingerprint(text: str) -> set[str]:
@@ -448,14 +486,19 @@ def collect(cfg: dict | None = None) -> tuple[list[News], dict[str, dict]]:
     if not raw:
         return [], status
 
+    # 阶段一：对原始条目打「市场影响」基础分（供合并时取簇内最高）。
+    cap_imp = float(cfg.get("cap_impact", 12))
     for n in raw:
-        n.score = score_one(n, now)
+        n.score = round(_impact_score((n.title or "") + " " + (n.summary or ""), cap_imp), 2)
     merged = merge_similar(raw, float(cfg.get("sim_ratio", 0.62)),
                            float(cfg.get("sim_overlap", 0.38)))
+    # 阶段二：合并后补充「传播热度」（多源同报 / 源侧重要标记），得到最终重要度。
+    for n in merged:
+        n.score = score_news(n, now, cfg)
 
-    # 只看「重要」的（看板侧能力）；过滤后不足 min_items 时按分值补齐，
+    # 只看「重要」的（阈值或源侧标记）；过滤后不足 min_items 时按分值补齐，
     # 避免关键词表偏窄时栏目空白。
-    important = [n for n in merged if is_important(n)] \
+    important = [n for n in merged if is_important(n, cfg)] \
         if bool(cfg.get("require_important", True)) else list(merged)
     min_items = int(cfg.get("min_items", 4))
     if len(important) < min_items:
@@ -478,6 +521,26 @@ def select(cfg: dict | None = None, max_items: int | None = None) -> tuple[list[
     return _take(items, n, int(cfg.get("max_per_source", 5))), status
 
 
+# ---------------------------------------------------------------- 文本渲染
+def _render_items(items: list[News], *, show_score: bool = False) -> list[str]:
+    """把新闻条目渲染为 Markdown 文本行（推送栏目与汇总共用）。"""
+    lines: list[str] = []
+    for i, n in enumerate(items, 1):
+        title = f"**{i}. {n.title}**"
+        if len(n.source_names) > 1:
+            title += f"（{len(n.source_names)} 家报道）"
+        lines.append(title)
+        meta = f"`{' · '.join(n.source_names)}` · {n.ts:%m-%d %H:%M}"
+        if show_score:
+            meta += f" · 重要度 {n.score:.1f}"
+        lines.append(meta)
+        if n.summary:
+            lines.append(n.summary[:160] + ("…" if len(n.summary) > 160 else ""))
+        lines.append(f"[原文]({n.url})")
+        lines.append("")
+    return lines
+
+
 # ---------------------------------------------------------------- 出口一：推送栏目
 def build_section(cfg: dict | None = None) -> tuple[str, int]:
     """生成推送用的 Markdown 段落，返回 ``(文本, 条数)``。
@@ -495,19 +558,41 @@ def build_section(cfg: dict | None = None) -> tuple[str, int]:
         lines.append("本期未抓到可推送的财经新闻"
                      + (f"（{'、'.join(failed)}暂不可用）" if failed else "") + "。")
         return "\n".join(lines), 0
-    for i, n in enumerate(items, 1):
-        title = f"**{i}. {n.title}**"
-        if len(n.source_names) > 1:
-            title += f"（{len(n.source_names)} 家报道）"
-        lines.append(title)
-        lines.append(f"`{' · '.join(n.source_names)}` · {n.ts:%m-%d %H:%M}")
-        if n.summary:
-            lines.append(n.summary[:160] + ("…" if len(n.summary) > 160 else ""))
-        lines.append(f"[原文]({n.url})")
-        lines.append("")
+    lines += _render_items(items)
     if failed:
         lines.append("> ⚠️ " + "、".join(failed) +
                      "本次抓取失败，以上为其余来源；故障不影响后续推送。")
+    return "\n".join(lines).strip(), len(items)
+
+
+# ---------------------------------------------------------------- 出口三：非交易日汇总
+def build_summary(cfg: dict | None = None) -> tuple[str, int]:
+    """非交易日财经要闻汇总：可独立推送的 Markdown 栏目。
+
+    与 ``build_section`` 的区别：放宽时间窗到 48h（覆盖周末两天）、
+    展示每条重要度评分、并附评分口径说明；供 ``--news`` 模式单独推送。
+    """
+    cfg = cfg or _cfg()
+    eff = dict(cfg)
+    eff["window_hours"] = float(cfg.get("off_day_window_hours", 48))
+    eff["max_items"] = int(cfg.get("off_day_max_items", 10))
+    items, status = select(eff)
+    failed = [k for k, v in status.items() if not v.get("ok")]
+    now = datetime.now()
+    wk = "一二三四五六日"[now.weekday()]
+    thr = float(cfg.get("important_threshold", 18))
+    lines = [f"## 📌 财经要闻汇总（非交易日 · {now:%m-%d} 周{wk}）", "",
+             f"> 重要度 = 来源权重 ×（基础分 + 市场影响 + 传播热度）× 时效因子；"
+             f"仅列评分 ≥ {thr:.0f} 或源侧标记为重要的条目。", ""]
+    if not items:
+        lines.append("本期未抓到可推送的财经新闻"
+                     + (f"（{'、'.join(failed)}暂不可用）" if failed else "") + "。")
+        return "\n".join(lines).strip(), 0
+    lines += _render_items(items, show_score=True)
+    if failed:
+        lines.append("> ⚠️ " + "、".join(failed) + "本次抓取失败，以上为其余来源。")
+    src_line = " · ".join(f"{k} {v.get('count', 0)}" for k, v in status.items())
+    lines.append(f"\n—— 本期共 {len(items)} 条重要新闻 ｜ 来源：{src_line} ——")
     return "\n".join(lines).strip(), len(items)
 
 
@@ -526,13 +611,15 @@ def build_dashboard(cfg: dict | None = None, out_dir: str | None = None) -> dict
     if bool(cfg.get("enabled", True)):
         items, status = select(cfg, max_items=int(cfg.get("dashboard_max_items", 15)))
         obj["sources"] = status
+        thr = float(cfg.get("important_threshold", 18))
         obj["items"] = [{
             "title": n.title[:140],
             "summary": n.summary[:260],
             "time": n.ts.strftime("%Y-%m-%d %H:%M"),
             "url": n.url,
             "sources": [{"name": s, "url": n.url} for s in n.source_names],
-            "important": bool(n.flagged),
+            "important": bool(n.flagged) or n.score >= thr,
+            "score": round(n.score, 2),
         } for n in items]
     target = target_dir / "news.json"
     content = json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n"
@@ -549,12 +636,16 @@ def _cli() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="重要财经新闻（统一实现）")
     ap.add_argument("--preview", action="store_true", help="打印推送用 Markdown 栏目")
+    ap.add_argument("--summary", action="store_true", help="打印非交易日财经要闻汇总")
     ap.add_argument("--json", action="store_true", help="输出结构化 JSON")
     ap.add_argument("--dashboard", action="store_true", help="只构建 dashboard/news.json")
     a = ap.parse_args()
     if a.dashboard:
         obj = build_dashboard()
         print(f"已写入 dashboard/news.json：{len(obj['items'])} 条")
+        return 0
+    if a.summary:
+        print(build_summary()[0])
         return 0
     items, status = select()
     if a.json or not a.preview:
