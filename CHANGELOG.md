@@ -7,6 +7,28 @@
 
 ---
 
+## [看板 v1.24.0] — 2026-10-18
+
+**整体移除「AI 五维评价」功能 —— 看板不再包含任何大模型 API Key 相关代码**
+
+- **删除文件**：`dashboard/ai_config.js`（模型预设 / 站长体验 Key 分段 base64 / 调用总开关）。
+- **`dashboard/index.html`**：删除 AI 五维评价卡（`#aiCard`）、AI 配置向导弹层（`#aiGateMask`）、
+  系统页「AI 调用记录」卡、`ai_config.js` 引用。
+- **`dashboard/app.js`**：删除约 500 行 AI 代码 —— 配置读写（`wb.ai.cfg` 等 5 个 localStorage 键）、
+  Key 校验与体验 Key 过期巡检、向导（选模型/申请测试 Key/测试连通）、模型调用 `aiCall`
+  （`Authorization: Bearer` 头）、五维渲染、调用日志与 Token 统计、启动时的向导/巡检逻辑。
+- **`dashboard/style.css`**：删除体验 Key 按钮专用样式（`.trial-btn` 等）。
+- **探针**：删除 `probe_ai.js`、`_t_trial.js`、`probe_v119.js`（专测 AI 功能，已无对象可测）；
+  其余 7 个探针移除「预置 AI 配置跳过向导」的 seed 块。
+- **文档**：说明书升 v1.3.0（删「AI 调用记录与开关」节，FAQ 说明功能已移除）。
+- **验证**：`node --check` 全部通过；verify_v150 探针 33/33、probe_pattern 探针 39/39 全过、
+  无 JS 运行时错误；dashboard/ 下 `AI_CFG|aiGate|apiKey|五维|wb.ai` 残留为零。
+- ⚠️ 历史提示：v1.13~v1.21 期间的体验 Key 曾随提交进入公开仓库历史，
+  若尚未在 DeepSeek 平台作废，请尽快作废重建。
+- 本版本同时携带看板「重要财经新闻」卡的前端改动（对应 [推送内容 v1.21.0]，此前未随看板提交）。
+
+---
+
 ## [清理 v1.23.1] — 2026-10-17
 
 **低风险冗余清理 + 修复 1 处期货模块潜在崩溃（pyflakes 引入检测）**

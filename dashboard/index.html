@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.20.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.24.0</span>
   </div>
 </header>
 
@@ -37,6 +37,14 @@
 
     <div class="card" id="patCard" style="display:none">
       <div class="card-body hist-link" id="patBox" style="padding:13px 16px"></div>
+    </div>
+
+    <div class="section-label">重要财经新闻</div>
+    <div class="card" id="newsCard">
+      <div class="card-head"><h2>可能影响市场的最新消息</h2><div class="hint" id="newsHint">正在加载</div></div>
+      <div class="plain">采集同花顺、金十数据、新浪财经；相同或类似的消息会合并成一条。</div>
+      <div class="list" id="newsList"><div class="loading"><span class="spinner"></span></div></div>
+      <div class="note" id="newsNote"></div>
     </div>
 
     <div class="section-label">一只一只看</div>
@@ -168,19 +176,6 @@
       <div class="legend">
         <span><i style="background:#007aff"></i>当天有情况的数量</span>
         <span><i style="background:#ff9500"></i>每天最多能发 5 条通知</span>
-      </div>
-    </div>
-
-    <div class="section-label">AI 调用记录（用了多少 Token）</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>每次调用 AI 的记录</h2>
-        <button type="button" class="trial-btn" id="aiLogClear">清空记录</button>
-      </div>
-      <div class="row switch-row" id="aiSwitchRow"></div>
-      <div class="note" id="aiLogSum">—</div>
-      <div class="list" id="aiLogList">
-        <div class="loading"><span class="spinner"></span></div>
       </div>
     </div>
 
@@ -337,17 +332,6 @@
         <div class="metrics c3" id="chartStats"></div>
       </div>
 
-      <!-- AI 五维投资评价（v1.13.0）：Key 在 ai_config.js 里填，留空则显示引导 -->
-      <div class="card" id="aiCard" style="margin-top:12px">
-        <div class="card-head">
-          <h2>AI 五维评价</h2>
-          <span class="btn sec sm" id="aiSetBtn" style="cursor:pointer;padding:4px 10px">AI 设置</span>
-        </div>
-        <div class="hint" id="aiHint" style="padding:0 16px">消息面 · 资金面 · 技术面 · 安全边际 · 行业</div>
-        <div class="list" id="aiDims"></div>
-        <div class="note" id="aiSummary"></div>
-      </div>
-
       <div class="btn-row" style="margin-top:12px">
         <button class="btn buy" id="chartBuy">买入</button>
         <button class="btn sell" id="chartSell">卖出</button>
@@ -357,57 +341,11 @@
   </div>
 </div>
 
-<!-- ==================== AI 配置向导（v1.15.0 首次访问弹窗） ==================== -->
-<div class="sheet-mask" id="aiGateMask" style="z-index:200">
-  <div class="sheet">
-    <div class="sheet-head">
-      <h3 id="aiGateTitle">欢迎使用 · 先配置 AI 评价</h3>
-      <span class="x" id="aiGateClose" style="display:none">✕</span>
-    </div>
-    <div class="pad">
-      <div class="plain" style="margin-bottom:12px">
-        本站的「AI 五维评价」需要调用大模型。选一个模型、填上<b>你自己的 API Key</b>，
-        测试连通后即可使用。<b>Key 只保存在你自己的浏览器里</b>，本站服务器不经手。
-      </div>
-      <div class="field">
-        <label>选模型</label>
-        <select id="aiGatePreset"></select>
-      </div>
-      <div class="field" id="aiGateCustom" style="display:none">
-        <label>接口地址（/chat/completions 完整 URL）</label>
-        <input id="aiGateUrl" placeholder="https://…/v1/chat/completions" autocomplete="off">
-        <label style="margin-top:10px">模型名</label>
-        <input id="aiGateModel" placeholder="例如 gpt-4o-mini" autocomplete="off">
-      </div>
-      <div class="field">
-        <label>API Key
-          <button type="button" class="trial-btn" id="aiGateTrial">申请测试 Key（10 分钟）</button>
-        </label>
-        <input id="aiGateKey" type="password" placeholder="sk-…" autocomplete="off">
-      </div>
-      <div class="card" style="margin:4px 0 14px">
-        <div class="card-body" id="aiGateMsg" style="padding:12px 14px">还没测试。</div>
-      </div>
-      <button class="btn block" id="aiGateTest">测试连通并进入</button>
-      <button class="btn sec block" id="aiGateSkip" style="margin-top:10px">免配置试用 · 先逛逛</button>
-      <div class="note" style="padding:10px 0 0">
-        选「免配置试用」可以先正常使用看板的所有其它功能；等你在股票弹层里
-        点「生成 AI 五维评价」时，再回到这里配置即可。
-      </div>
-      <div class="note" style="padding:6px 0 0">
-        还没有 Key？DeepSeek 充几块钱能用很久：
-        <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- 图表库：优先本地（随站点一起发布，国内可达），失败再退公共 CDN。
      2026-10 实测 cdn.jsdelivr.net 在部分网络下不可达，会导致整页图表初始化失败。 -->
 <script src="./vendor/echarts.min.js"
         onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="ai_config.js"></script>
 <script src="core.js"></script>
 <script src="app.js"></script>
 <script src="account.js"></script>

@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.20.0';
+  const APP_VERSION = 'v1.24.0';
 
   const S = {
     data: null,        // data.json
@@ -27,6 +27,7 @@
     futLoading: null,
     pat: null,         // pattern.json：右侧反转形态板块（切到该页才拉）
     patLoading: null,
+    news: null,       // news.json：三家财经源的重要新闻（相似项已合并）
     sort: C.sort,      // 各列表的当前排序（由 core.js 维护）
   };
 
@@ -307,6 +308,32 @@
     renderTrigs();
   }
 
+  function renderNews() {
+    const box = $('newsList'), hint = $('newsHint'), note = $('newsNote');
+    if (!box || !hint || !note) return;
+    const n = S.news;
+    const rows = (n && n.items) || [];
+    box.innerHTML = '';
+    if (!rows.length) {
+      hint.textContent = '暂无重要消息';
+      box.appendChild(el('div', 'empty', '暂时没有采集到符合重要性条件的财经新闻。'));
+    } else {
+      hint.textContent = rows.length + ' 条 · ' + timeAgo(n.generated_at);
+      rows.forEach((r) => {
+        const sources = (r.sources || []).map((s) => s.name).join(' · ');
+        const row = el('div', 'row clickable',
+          '<div class="t"><div>' + esc(r.title) + '</div><div class="s">' +
+          esc(r.time || '—') + ' · ' + esc(sources) + (r.summary ? ' · ' + esc(r.summary) : '') +
+          '</div></div><div class="r">›</div>');
+        row.addEventListener('click', () => { if (r.url) window.open(r.url, '_blank', 'noopener'); });
+        box.appendChild(row);
+      });
+    }
+    const failed = Object.entries((n && n.sources) || {}).filter(([, s]) => !s.ok).map(([name]) => name);
+    note.textContent = failed.length ? failed.join('、') + ' 暂时不可用，下次自动更新会重试。' :
+      '每次日常数据更新都会重新采集；点击新闻可查看原始来源。';
+  }
+
   /** 今日触发明细列表（排序变化时单独重画，不动 Hero） */
   function renderTrigs() {
     const tv = trigVisibleRows();
@@ -383,7 +410,7 @@
         '<div class="p">' + num(r.price, 2) + '</div>' +
         '<div class="s ' + cls(r.chg_pct) + '">' + pct(r.chg_pct, 2) + '</div>' +
       '</div>';
-    // v1.13.0：把整行数据带给弹层，AI 五维评价要用
+    // 把整行数据带给弹层（详情区展示与复核用）
     row.addEventListener('click', () => openKline(r.code, r.name, r));
     return row;
   }
@@ -598,8 +625,6 @@
         '<div class="empty">该品种周线数据缺失<br>（历史合约不足 61 周）</div>';
       return;
     }
-    kContext.ctx = r;                                 // 喂给 AI 五维评价
-    renderAiIntro();
     renderFutKline(r);
     renderFutStats(r);
   }
@@ -795,7 +820,7 @@
       '③ 洗盘＝回踩 4%~20%、不少于 3 日、近 3 日不再破前一日 0.5%；' +
       '④ 启动＝涨停，或涨幅 ≥5% 且量比 ≥1.8，且收盘创回踩段新高。' +
       '<br><b>筛除条件</b>（按此过滤，被排除的标的见下方明细）：' +
-      '① 排除 ST/*ST 与退市整理股（名称含 ST 或「退」）；' +
+      '① 排除 ST/*ST 与退市整理股（名称以 ST 开头，或含「退」）；' +
       '② 流通市值 ' + (f.mv ? f.mv[0] + '~' + f.mv[1] : '30~200') + ' 亿；' +
       '③ 未来 ' + (f.lift_days || 60) + ' 天内解禁市值 ≥ 当前流通市值 ' +
         Math.round((f.lift_ratio || 0.15) * 100) + '% 的剔除；' +
@@ -913,7 +938,6 @@
     const runs = (d.runs || []).slice(0, 12);
     if (!runs.length) {
       list.appendChild(el('div', 'empty', '<div class="big">◌</div>暂无运行记录'));
-      renderAiLog();
       return;
     }
     const rows = runs.map((r) => {
@@ -952,9 +976,6 @@
       list.appendChild(togg);
       apply(open);
     }
-
-    renderAiLog();     // v1.17.0：AI 调用日志（请求 / 时间 / 消耗 Token）
-    renderAiSwitch();  // v1.19.0：AI 调用总开关（暂停 / 恢复）
   }
 
   let trendChart = null;
@@ -1011,499 +1032,6 @@
   let kBars = {};             // 周期→OHLCV 缓存（v1.20.0：替代 kWeekly/kDaily，当天复用）
   let kMinute = null;         // 当日分时缓存 {pre, pts}
 
-  /* ---------------- AI 五维投资评价（v1.13.0 引入，v1.15.0 改本地 Key） ----------------
-     Key 不再写在 ai_config.js（仓库公开=泄露）。首次访问弹出配置向导，
-     使用者自选模型+填自己的 Key，测试连通后存 localStorage（wb.ai.cfg）。
-     结果按「股票+当天」缓存到 localStorage，同一天反复打开不重复计费。 */
-
-  const AI_DIMS = ['消息面', '资金面', '技术面', '股价安全边际', '行业风险'];
-  const AI_LEVEL = {
-    positive: { text: '偏利好', color: 'var(--up)' },      // A 股惯例：利好红
-    neutral:  { text: '中性',   color: 'var(--text3)' },
-    negative: { text: '偏利空', color: 'var(--down)' },    // 利空绿
-    risk:     { text: '需警惕', color: 'var(--orange)' },
-  };
-
-  const AI_LS_KEY = 'wb.ai.cfg';
-
-  /* —— AI 调用总开关（v1.19.0）——
-     用户要求「暂停调用 AI 模型」：默认关闭 → 一律不发请求、不消耗 Token。
-     默认值写在 ai_config.js 的 aiPaused；使用者在「系统」页可一键恢复/再暂停，
-     他的选择记在本机 localStorage（wb.ai.paused），不改代码、下次打开仍生效。 */
-  const AI_PAUSE_LS = 'wb.ai.paused';
-
-  function aiPaused() {
-    const v = localStorage.getItem(AI_PAUSE_LS);
-    if (v === '1') return true;
-    if (v === '0') return false;
-    return !!(window.AI_CFG && window.AI_CFG.aiPaused);   // 本机没选过 → 用配置里的默认值
-  }
-
-  /** 切换总开关。恢复时若还没配置 Key，顺手把配置向导叫出来。 */
-  function aiSetPaused(on) {
-    try { localStorage.setItem(AI_PAUSE_LS, on ? '1' : '0'); } catch (e) { /* 隐私模式 */ }
-    if (on && $('aiGateMask')) $('aiGateMask').classList.remove('show');  // 暂停后不留遮罩
-    renderAiSwitch();
-    renderAiIntro();                                       // 弹层开着的话同步刷新卡片
-    if (!on && !aiCfgOk()) aiGateInit(true);               // 恢复但没 Key → 直接给向导
-  }
-
-  /* —— 免配置试用（v1.19.0）——
-     向导里的「免配置试用」= 先不填 Key 也能正常看板；等真正要用模型
-     （点「生成 AI 五维评价」）时再把向导叫出来。记在本机（wb.ai.skipped），
-     配置好 Key 后此标记自动失效。 */
-  const AI_SKIP_LS = 'wb.ai.skipped';
-
-  function aiSkipped() {
-    try { return localStorage.getItem(AI_SKIP_LS) === '1'; } catch (e) { return false; }
-  }
-
-  function aiGateSkip() {
-    try { localStorage.setItem(AI_SKIP_LS, '1'); } catch (e) { /* 隐私模式 */ }
-    $('aiGateMask').classList.remove('show');
-  }
-
-  /* —— 体验 Key（v1.16.0）——
-     站长把自己的小额测试 Key 藏在 ai_config.js（分两段 base64，不整串明文）。
-     访客点「申请测试 Key」→ 拼回原文隐匿填入（输入框是 password），
-     10 分钟后自动失效：清配置 + 重新弹出向导，必须换自己的 Key 或重新申请。 */
-  const TRIAL_LS = 'wb.ai.trialUntil';
-
-  function aiTrialKey() {
-    try { return atob((window.AI_CFG.trialKeyParts || []).join('')); }
-    catch (e) { return ''; }
-  }
-  /** 剩余有效毫秒数；<=0 = 没申请过或已过期 */
-  function aiTrialLeft() {
-    return Number(localStorage.getItem(TRIAL_LS) || 0) - Date.now();
-  }
-  function aiTrialSweep() {
-    const c = aiCfg();
-    if (c && c.apiKey && c.apiKey === aiTrialKey() && aiTrialLeft() <= 0) {
-      localStorage.removeItem(AI_LS_KEY);
-      localStorage.removeItem(TRIAL_LS);
-      return true;                 // true = 刚刚发生了过期
-    }
-    return false;
-  }
-  /** 过期收尾：清配置 → 弹回向导 → 提示已过期（未过期则不动） */
-  function aiTrialExpire() {
-    if (!aiTrialSweep()) return;
-    if (aiPaused()) return;        // v1.19.0：总开关关着就别再弹向导打扰人
-    aiGateInit(true);
-    const m = $('aiGateMsg');
-    if (m) m.innerHTML = '<span style="color:var(--orange)">测试 Key 已过有效期（10 分钟），' +
-      '请填自己的 Key，或再点「申请测试 Key」。</span>';
-  }
-
-  function aiCfg() {
-    try { return JSON.parse(localStorage.getItem(AI_LS_KEY) || 'null'); }
-    catch (e) { return null; }
-  }
-
-  function aiCfgOk() {
-    const c = aiCfg();
-    if (!c || !c.apiKey || !c.baseUrl || !c.model) return false;
-    if (c.apiKey === aiTrialKey() && aiTrialLeft() <= 0) return false;  // 体验 Key 已过期
-    return true;
-  }
-
-  function aiCacheKey(code) { return 'wb.ai.' + code; }
-
-  /** 把行数据浓缩成给模型的客观事实清单（只给系统里算出来的数，不编造）。
-     三种行结构字段名不同：今天页 chg_pct/amt_ratio、形态页 chg/vol、
-     期货 price/dev_pct(小数)/sector —— 在这里统一。 */
-  function aiFacts(ctx) {
-    if (!ctx) return '（暂无系统指标，请基于常识与该股票公开信息谨慎作答，不确定的维度标 neutral）';
-    const isFut = !!ctx.sector;
-    const chg = ctx.chg_pct != null ? ctx.chg_pct : ctx.chg;
-    const vol = ctx.amt_ratio != null ? ctx.amt_ratio : ctx.vol;
-    const dev = ctx.dev_pct != null ? (isFut ? ctx.dev_pct * 100 : ctx.dev_pct) : null;
-    const p = [];
-    p.push('名称：' + ctx.name + '（' + String(ctx.code).replace('.', '') +
-      (isFut ? '，期货品种加权指数' : '') + '）');
-    if (ctx.industry || ctx.sector) p.push((isFut ? '板块：' : '申万行业：') + (ctx.industry || ctx.sector));
-    if (ctx.price != null) p.push((isFut ? '加权价：' : '现价：') + num(ctx.price, 2) + (isFut ? '' : ' 元'));
-    if (chg != null) p.push('今日涨跌幅：' + pct(chg, 2));
-    if (dev != null) p.push('相对 60 周均线偏离：' + pct(dev, 2) +
-      '（处于长期均线附近或刚站上）');
-    if (vol != null) p.push('量比（今日成交额/近20日均额）：' + num(vol, 2));
-    if (ctx.turnover != null) p.push('换手率：' + pct(ctx.turnover, 2));
-    if (ctx.a_events_1y != null) p.push('年内出现同类信号次数：' + num(ctx.a_events_1y, 0));
-    if (ctx.mv_float_yi != null) p.push('流通市值：约 ' + num(ctx.mv_float_yi, 0) + ' 亿元');
-    if (ctx.status) p.push('信号状态：' + ctx.status);
-    // 锚定回测事实，防止模型把「站上均线」误读成看涨信号（期货与 A 股同一逻辑）
-    p.push('系统回测事实（必须采纳，不可反驳）：股票在长期均线下方运行后首次重新站上'
-      + ' 60 周均线时，历史回测显示触发后 60 日平均跑输全市场等权 4.2%（16 个年份全部如此）；'
-      + '其中量比 ≥2.5 或换手 ≥5% 的一档跑输 6.4%，量比 <1 且换手 <2% 的一档跑输 2.8%。'
-      + '该信号统计上是「掉队风险提示」而非买入机会。');
-    return p.join('\n');
-  }
-
-  /* ---------------- AI 调用日志（v1.17.0） ----------------
-     每次**真正调用模型**都记一条：请求内容 / 时间 / 消耗 Token（取接口返回的 usage）。
-     只存在使用者自己的浏览器（localStorage），最多留 50 条，不上传任何地方。 */
-  const AI_LOG_KEY = 'wb.ai.log';
-  const AI_LOG_MAX = 50;
-
-  function aiLogRead() {
-    try { return JSON.parse(localStorage.getItem(AI_LOG_KEY) || '[]') || []; }
-    catch (e) { return []; }
-  }
-
-  function aiLogAdd(entry) {
-    const list = aiLogRead();
-    list.unshift(entry);                                   // 新的在前
-    try { localStorage.setItem(AI_LOG_KEY, JSON.stringify(list.slice(0, AI_LOG_MAX))); }
-    catch (e) { /* 隐私模式存不了就算了 */ }
-    renderAiLog();
-  }
-
-  /** v1.19.0：AI 调用总开关（系统页「AI 调用记录」卡顶部） */
-  function renderAiSwitch() {
-    const node = $('aiSwitchRow');
-    if (!node) return;
-    const paused = aiPaused();
-    node.innerHTML =
-      '<div class="grow">' +
-        '<div class="t1">AI 模型调用 ' +
-          (paused ? '<span class="tag orange">已暂停</span>'
-                  : '<span class="tag down">使用中</span>') +
-        '</div>' +
-        '<div class="t2" style="white-space:normal">' + (paused
-          ? '暂停期间<b>一次请求也不会发</b>，不消耗任何 Token；' +
-            '看板其它功能（列表、图表、期货、历史）都不受影响。'
-          : '点「生成 AI 五维评价」会<b>真实调用模型并计费</b>；不需要时可随时暂停。') +
-        '</div>' +
-      '</div>' +
-      '<div class="r"><button type="button" class="btn sec sm" id="aiPauseBtn">' +
-        (paused ? '恢复使用' : '暂停使用') + '</button></div>';
-    $('aiPauseBtn').addEventListener('click', () => aiSetPaused(!paused));
-  }
-
-  /** 各家 usage 字段略有差异，统一成 { p, c, t }（取不到就是 null，如实显示） */
-  function aiTokens(usage) {
-    if (!usage) return null;
-    const p = usage.prompt_tokens != null ? usage.prompt_tokens : usage.input_tokens;
-    const c = usage.completion_tokens != null ? usage.completion_tokens : usage.output_tokens;
-    let t = usage.total_tokens != null ? usage.total_tokens : null;
-    if (t == null && (p != null || c != null)) t = (p || 0) + (c || 0);
-    return { p: p == null ? null : p, c: c == null ? null : c, t: t };
-  }
-
-  function aiNow() {
-    const d = new Date(), p = (x) => String(x).padStart(2, '0');
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
-      ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-  }
-
-  function renderAiLog() {
-    const list = $('aiLogList');
-    if (!list) return;
-    const rows = aiLogRead();
-    const sum = $('aiLogSum');
-    const total = rows.reduce((a, r) => a + ((r.tokens && r.tokens.t) || 0), 0);
-    if (sum) {
-      sum.innerHTML = rows.length
-        ? '共 <b>' + rows.length + '</b> 次调用，累计消耗 <b>' + total + '</b> Token。' +
-          '只记在你自己这台浏览器里，最多留 ' + AI_LOG_MAX + ' 条。<br/>' +
-          '不点「生成 AI 五维评价」就不会调用模型，也就不会消耗 Token。'
-        : '还没有调用记录。<b>只有点「生成 AI 五维评价」或向导里的「测试连通」才会调用模型计费</b>，' +
-          '其他功能（列表、周线图、期货、历史）都不消耗 Token。';
-    }
-    if (!rows.length) { list.innerHTML = '<div class="empty">暂无记录</div>'; return; }
-    list.innerHTML = '';
-    rows.forEach((r) => {
-      const tk = r.tokens && r.tokens.t != null ? r.tokens.t : null;
-      const row = el('div', 'row');
-      row.innerHTML =
-        '<div class="grow"><div class="t1">' + esc(r.req || '—') + '</div>' +
-        '<div class="t2"><span>' + esc(r.at || '') + '</span>' +
-        '<span>' + esc(r.model || '') + '</span>' +
-        (r.ok ? '<span class="tag down">成功</span>' : '<span class="tag up">失败</span>') + '</div>' +
-        (r.ok ? '' : '<div class="t2" style="white-space:normal">' +
-          esc(String(r.err || '').slice(0, 120)) + '</div>') +
-        '</div>' +
-        '<div class="r"><div class="p">' + (tk == null ? '—' : tk) + '</div>' +
-        '<div class="s muted">Token</div></div>';
-      list.appendChild(row);
-    });
-  }
-
-  async function aiCall(ctx) {
-    const cfg = aiCfg();
-    const req = (ctx && ctx.name
-      ? ctx.name + '（' + String(ctx.code || '').replace('.', '') + '）' : '未知标的') +
-      ' · AI 五维评价';
-    const model = (cfg && cfg.model) || '—';
-    let usage = null;                       // 有 usage 就记，没有就如实显示「—」
-    const sys =
-      '你是严谨的 A 股投资分析助手。用户会给你一只股票的客观指标，' +
-      '请从五个维度给出简短评价：' + AI_DIMS.join('、') + '。' +
-      '要求：① 每个维度 level 取 positive/neutral/negative/risk 之一，' +
-      'text 不超过 45 个字、说人话、给出理由；② 必须采纳用户提供的回测事实，' +
-      '不要把「站上长期均线」当成看涨依据；③ 不确定的消息面/资金面信息标 neutral，' +
-      '禁止编造具体新闻、公告或资金数据；④ 严格输出 JSON，不要多余文字，格式：' +
-      '{"dims":[{"name":"消息面","level":"neutral","text":"…"},…五个],"summary":"不超过 60 字的总体结论"}';
-    try {
-      const res = await fetch(cfg.baseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages: [{ role: 'system', content: sys }, { role: 'user', content: aiFacts(ctx) }],
-          temperature: 0.3,
-          stream: false,
-        }),
-      });
-      if (!res.ok) {
-        const t = (await res.text().catch(() => '')).slice(0, 160);
-        throw new Error('接口返回 ' + res.status + (t ? '：' + t : ''));
-      }
-      const j = await res.json();
-      usage = aiTokens(j && j.usage);
-      let txt = (j.choices && j.choices[0] && j.choices[0].message &&
-                 j.choices[0].message.content) || '';
-      txt = txt.replace(/```json|```/g, '').trim();
-      const m = txt.indexOf('{'), e = txt.lastIndexOf('}');
-      if (m < 0 || e <= m) throw new Error('模型没有返回 JSON');
-      const obj = JSON.parse(txt.slice(m, e + 1));
-      if (!Array.isArray(obj.dims) || !obj.dims.length) throw new Error('返回内容为空');
-      aiLogAdd({ at: aiNow(), req: req, model: model, tokens: usage, ok: true });
-      return obj;
-    } catch (err) {
-      aiLogAdd({ at: aiNow(), req: req, model: model, tokens: usage, ok: false,
-                 err: String((err && err.message) || err) });
-      throw err;
-    }
-  }
-
-  function aiRender(obj, code) {
-    const box = $('aiDims');
-    box.innerHTML = '';
-    (obj.dims || []).forEach((d) => {
-      const lv = AI_LEVEL[d.level] || AI_LEVEL.neutral;
-      const row = el('div', 'row');
-      row.innerHTML =
-        '<div class="grow">' +
-          '<div class="t1"><span style="color:' + lv.color + ';font-weight:650">' +
-            esc(d.name || '') + '</span>' +
-            ' <span class="tag" style="color:' + lv.color + '">' + lv.text + '</span></div>' +
-          '<div class="t2" style="white-space:normal">' + esc(d.text || '') + '</div>' +
-        '</div>';
-      box.appendChild(row);
-    });
-    $('aiSummary').innerHTML =
-      '<b>一句话总结</b>：' + esc(obj.summary || '—') +
-      '<br/>AI 生成，仅供参考，不构成投资建议 · ' +
-      (code ? '<span class="code">' + esc(code.replace('.', '')) + '</span> · ' : '') +
-      '结果当天缓存，不重复调用';
-    $('aiHint').textContent = '模型 ' + ((aiCfg() || {}).model || '—');
-  }
-
-  function aiIdle(code) {
-    $('aiDims').innerHTML = '';
-    if (aiPaused()) {                       // v1.19.0：总开关关着 → 只说明情况，不发请求
-      $('aiHint').textContent = '已暂停';
-      $('aiSummary').innerHTML =
-        '<b>AI 评价当前已暂停</b>：设置为不调用任何 AI 模型，' +
-        '所以这里不会生成评价，也不会消耗 Token。看板其它功能都照常。<br/>' +
-        '需要时可在「系统」页的「AI 调用记录」里一键恢复使用。';
-      const back = el('button', 'btn sec block');
-      back.textContent = '恢复使用 AI 评价';
-      back.addEventListener('click', () => aiSetPaused(false));
-      $('aiDims').appendChild(back);
-      return;
-    }
-    $('aiHint').textContent = '消息面 · 资金面 · 技术面 · 安全边际 · 行业';
-    if (!aiCfgOk()) {
-      // v1.19.0 免配置试用：按钮照常给，点了才弹向导要 Key（用到模型时才配置）
-      $('aiSummary').innerHTML =
-        '还没配置 AI：点下面按钮选模型、填你自己的 API Key' +
-        '（只保存在本机浏览器，本站服务器不经手），测通后即可生成。';
-      const btn = el('button', 'btn sec block');
-      btn.textContent = '生成 AI 五维评价';
-      btn.addEventListener('click', () => aiGateInit(true));   // 按需弹配置
-      $('aiDims').appendChild(btn);
-      return;
-    }
-    $('aiSummary').innerHTML = '';
-    const btn = el('button', 'btn sec block');
-    btn.textContent = '生成 AI 五维评价';
-    btn.addEventListener('click', () => aiRun(code));
-    $('aiDims').appendChild(btn);
-  }
-
-  async function aiRun(code) {
-    if (aiPaused()) {                       // 双保险：任何路径都不越过总开关
-      aiIdle(code);
-      return;
-    }
-    const ctx = kContext && kContext.ctx;
-    $('aiDims').innerHTML =
-      '<div class="loading"><span class="spinner"></span> AI 正在从五个维度分析…（约 5~15 秒）</div>';
-    $('aiSummary').textContent = '';
-    try {
-      const obj = await aiCall(ctx);
-      aiRender(obj, code);
-      try {
-        localStorage.setItem(aiCacheKey(code),
-          JSON.stringify({ day: (S.today || '').slice(0, 10) || new Date().toISOString().slice(0, 10), obj: obj }));
-      } catch (_) { /* 隐私模式下存不了就算了 */ }
-    } catch (e) {
-      $('aiDims').innerHTML = '';
-      $('aiSummary').innerHTML =
-        '<b style="color:var(--orange)">生成失败</b>：' + esc(String(e.message || e)) +
-        '<br/>可在「AI 设置」里检查 Key / 换模型；部分厂商不允许浏览器直连（CORS 报错），' +
-        '换支持的厂商或加中转即可。';
-    }
-  }
-
-  /* ---------------- AI 配置向导（v1.15.0） ----------------
-     首次访问（localStorage 里没有有效配置）强制弹出；测试连通通过才放行。
-     已配置过的使用者可从 AI 卡右上「AI 设置」再次打开修改。 */
-  function aiGatePresetChange() {
-    const p = (window.AI_CFG.presets || [])
-      .find((x) => x.id === $('aiGatePreset').value);
-    const isCustom = !p || p.id === 'custom';
-    $('aiGateCustom').style.display = isCustom ? '' : 'none';
-    if (p && !isCustom) {
-      $('aiGateUrl').value = p.baseUrl;
-      $('aiGateModel').value = p.model;
-    }
-  }
-
-  /** 「申请测试 Key」：隐匿填入体验 Key，并起 10 分钟有效期 */
-  function aiGateTrial() {
-    const k = aiTrialKey();
-    const msg = $('aiGateMsg');
-    if (!k) { msg.textContent = '本站暂未配置体验 Key。'; return; }
-    const sel = $('aiGatePreset');
-    sel.value = 'deepseek';            // 体验 Key 配 DeepSeek 接口
-    aiGatePresetChange();
-    $('aiGateKey').value = k;          // password 输入框 → 隐匿显示
-    localStorage.setItem(TRIAL_LS, String(Date.now() + (window.AI_CFG.trialTtlMs || 600000)));
-    const min = Math.round((window.AI_CFG.trialTtlMs || 600000) / 60000);
-    msg.innerHTML = '<span style="color:var(--up)">已为你填入测试 Key（隐匿显示），<b>' + min +
-      ' 分钟内有效</b>。点下方「测试连通并进入」即可开始；到期会自动退出并要求换 Key。</span>';
-  }
-
-  function aiGateInit(force) {
-    const mask = $('aiGateMask');
-    if (!mask) return;
-    // v1.19.0：AI 已暂停 → 不再自动弹向导拦人（首次访客也能正常看板）；
-    // 手动点「AI 设置」仍可打开，且此时允许关闭，避免把人堵在遮罩里。
-    if (!force && aiPaused()) return;
-    const sel = $('aiGatePreset');
-    if (!sel.options.length) {
-      (window.AI_CFG.presets || []).forEach((p) => {
-        const o = document.createElement('option');
-        o.value = p.id; o.textContent = p.name;
-        sel.appendChild(o);
-      });
-    }
-    const c = aiCfg();
-    if (c) {
-      sel.value = c.presetId || 'custom';
-      $('aiGateUrl').value = c.baseUrl || '';
-      $('aiGateModel').value = c.model || '';
-      $('aiGateKey').value = c.apiKey || '';
-    }
-    const first = !aiCfgOk();
-    const locked = first && !aiPaused();      // 暂停时即使未配置也能关掉
-    $('aiGateClose').style.display = locked ? 'none' : '';
-    mask.dataset.dismissable = locked ? '0' : '1';
-    sel.onchange = aiGatePresetChange;
-    aiGatePresetChange();     // 按当前选中项预填 baseUrl/model
-    // 弹出条件：手动打开，或（未配置 且 没选过「免配置试用」）
-    if (force || (first && !aiSkipped())) mask.classList.add('show');
-  }
-
-  async function aiGateTest() {
-    const msg = $('aiGateMsg');
-    if (aiPaused()) {          // v1.19.0：暂停期间不发任何请求
-      msg.innerHTML = '<span style="color:var(--orange)">AI 调用当前处于暂停状态，' +
-        '先到「系统」页恢复使用，再测连通。</span>';
-      return;
-    }
-    const p = (window.AI_CFG.presets || [])
-      .find((x) => x.id === $('aiGatePreset').value);
-    const baseUrl = ($('aiGateUrl').value || '').trim();
-    const model = ($('aiGateModel').value || '').trim();
-    const apiKey = ($('aiGateKey').value || '').trim();
-    if (!baseUrl || !model || !apiKey) {
-      msg.innerHTML = '<span style="color:var(--orange)">请先填完整：模型、接口地址、API Key。</span>';
-      return;
-    }
-    msg.textContent = '正在测试连通…';
-    $('aiGateTest').disabled = true;
-    try {
-      const res = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: 'user', content: '请只回复两个字：连通' }],
-          max_tokens: 16, stream: false,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error('接口返回 ' + res.status +
-          '（常见原因：Key 无效 / 余额不足 / 模型名不对）');
-      }
-      const j = await res.json();
-      if (!j.choices || !j.choices.length) throw new Error('返回不像 chat/completions 格式');
-      localStorage.setItem(AI_LS_KEY, JSON.stringify({
-        presetId: p ? p.id : 'custom', baseUrl: baseUrl, model: model,
-        apiKey: apiKey, okDay: new Date().toISOString().slice(0, 10),
-      }));
-      try { localStorage.removeItem(AI_SKIP_LS); } catch (e) { /* 隐私模式 */ }
-      aiLogAdd({ at: aiNow(), req: '连通测试（' + model + '）', model: model,
-                 tokens: aiTokens(j && j.usage), ok: true });
-      msg.innerHTML = '<span style="color:var(--up)"><b>✅ 连通成功</b>，配置已保存在本浏览器。</span>';
-      renderAiIntro();          // v1.19.0：刚配置好 → 卡片立刻切成可用状态（原先要重开弹层才刷新）
-      setTimeout(() => { $('aiGateMask').classList.remove('show'); }, 450);
-    } catch (e) {
-      aiLogAdd({ at: aiNow(), req: '连通测试（' + (model || '—') + '）', model: model || '—',
-                 tokens: null, ok: false, err: String((e && e.message) || e) });
-      msg.innerHTML = '<span style="color:var(--down)"><b>❌ 连通失败</b>：' + esc(String(e.message || e)) +
-        '<br/>请检查 Key 是否有效、接口地址、模型名；浏览器控制台若见 CORS 报错，' +
-        '说明该厂商不允许网页直连，换 DeepSeek/智谱等支持的厂商。</span>';
-    }
-    $('aiGateTest').disabled = false;
-  }
-
-  function aiGateBind() {
-    const mask = $('aiGateMask');
-    if (!mask) return;
-    $('aiGateTest').addEventListener('click', aiGateTest);
-    $('aiGateClose').addEventListener('click', () => mask.classList.remove('show'));
-    const tb = $('aiGateTrial');
-    if (tb) tb.addEventListener('click', aiGateTrial);
-    const skip = $('aiGateSkip');
-    if (skip) skip.addEventListener('click', aiGateSkip);
-    mask.addEventListener('click', (e) => {
-      if (e.target === mask && mask.dataset.dismissable === '1') mask.classList.remove('show');
-    });
-    const setBtn = $('aiSetBtn');
-    if (setBtn) setBtn.addEventListener('click', () => aiGateInit(true));
-  }
-
-  function renderAiIntro() {
-    const code = kContext && kContext.code;
-    if (!code) return;
-    let cached = null;
-    try {
-      cached = JSON.parse(localStorage.getItem(aiCacheKey(code)) || 'null');
-    } catch (_) { /* ignore */ }
-    const today = new Date().toISOString().slice(0, 10);
-    if (cached && cached.obj && cached.day === today) {
-      aiRender(cached.obj, code);          // 当天已生成过，直接展示（不再计费）
-    } else {
-      aiIdle(code);
-    }
-  }
-
   /* 周线图公共配置（weeklyChartOption）与 ma() 已移入 core.js */
 
   async function openKline(code, name, ctx) {
@@ -1517,7 +1045,6 @@
     $('chartRange').style.display = '';
     renderRangeChips();                     // v1.20.0：分时/日K/周K/月K/年K
     $('kChart').innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载周K…</div>';
-    renderAiIntro();                                  // AI 评价区先就位（缓存命中则直接出结果）
     const bars = await fetchBarsOne(code, 'week').catch(() => null);
     if (!bars || !bars.length) {
       $('kChart').innerHTML =
@@ -1726,18 +1253,6 @@
 
   /* ------------------------------------------------ 启动 */
   async function boot() {
-    aiGateInit();      // v1.15.0：未配置 AI 时先弹配置向导（盖住整页，测通才能操作）
-    aiGateBind();
-    aiTrialExpire();                       // v1.16.0：体验 Key 已过期则清配置并提示
-    setInterval(aiTrialExpire, 30 * 1000); // 每 30 秒巡检一次有效期，到点自动弹回向导
-    const lc = $('aiLogClear');            // v1.17.0：清空 AI 调用日志（只清本机记录）
-    if (lc) lc.addEventListener('click', () => {
-      if (!aiLogRead().length) return;
-      if (window.confirm('清空全部 AI 调用记录？（只影响本机记录，其他功能不受影响）')) {
-        localStorage.removeItem(AI_LOG_KEY);
-        renderAiLog();
-      }
-    });
     bindTabs();
     bindSheets();
     const vb = $('verBadge');
@@ -1759,6 +1274,9 @@
       }).catch(() => {});
       // 形态入口卡（数据由本机生成，属可选板块，失败只是不显示该卡）
       loadJSON('pattern.json').then((p) => { S.pat = p; fillPatCard(); }).catch(() => {});
+      loadJSON('news.json').then((n) => { S.news = n; renderNews(); }).catch(() => {
+        S.news = { items: [], sources: {} }; renderNews();
+      });
     } catch (e) {
       $('todayHero').innerHTML = '<div class="banner err">数据加载失败：' + esc(e.message) +
         '<br><br>请确认仓库已推送 dashboard/ 数据文件。</div>';
