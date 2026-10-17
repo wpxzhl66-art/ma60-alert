@@ -32,6 +32,10 @@ import re
 import numpy as np
 import pandas as pd
 
+# 名称风险判定（ST / 退市）在 name_rule，本项目唯一真源：
+# pattern（回测+扫描）、alert（推送名单）、dashboard（前端镜像）共用同一口径。
+from name_rule import is_risk_name, is_st_name, risk_tag
+
 # ---------------------------------------------------------------- 阈值（唯一真源）
 DD_MIN = -0.25            # 阶段①：前期回撤下限（更早 250 日高点 → 其后 60 日低点）
 DD_PRIOR = 250            # 阶段①：更早区间的长度（交易日）
@@ -60,14 +64,11 @@ MV_MIN_YI = 30.0
 MV_MAX_YI = 200.0
 
 # 名称风险标识（回测与实盘通用）：风险警示与退市类一律剔除。
+# ⚠️ 判定规则已上移到 ``src/name_rule.py``（全项目唯一真源，推送 / 形态 / 看板共用）。
+#    这里保留同名函数、改为转发，调用方（scan.py / store_scan.py）无需改动。
 # ⚠️ 不能只判 "ST"：退市整理期的股票改名成「XX退」（如「元道退」），
-# 名称里没有 ST，只判 ST 会漏掉。
-RISK_NAME_PAT = re.compile(r"ST|退", re.IGNORECASE)
-
-
-def is_risk_name(name: str) -> bool:
-    """名称是否带风险标识：ST / *ST / 退市整理（「XX退」）等。"""
-    return bool(RISK_NAME_PAT.search(str(name or "")))
+#    名称里没有 ST，只判 ST 会漏掉 —— 这一点由 name_rule.DELIST_PAT 兜住。
+#    ⚠️ 2026-10-17 起 ST 改为**只看名称前缀**（旧口径是名称任意位置含 ST）。
 
 
 def in_mv_range(mv: float) -> bool:

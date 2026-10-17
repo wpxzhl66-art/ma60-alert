@@ -52,9 +52,11 @@ news:
     sina: true               # 新浪财经滚动新闻（roll feed，JSON）
   window_hours: 24           # 只保留最近 N 小时内发布的新闻
   per_source: 25             # 每个源最多抓多少条原始新闻
-  max_items: 8               # 栏目最终输出条数
+  max_items: 8               # 推送栏目最终输出条数
+  dashboard_max_items: 15    # 看板 news.json 输出条数
   max_per_source: 5          # 同一来源最多占几条（避免单源刷屏）；0 = 不限制
-  sim_threshold: 0.62        # 标题相似度 ≥ 此值判为同一事件（合并）
+  sim_ratio: 0.62            # 标题字符序列相似度 ≥ 此值判为同一事件（合并）
+  sim_overlap: 0.38          # 标题 2-gram 重合度 ≥ 此值判为同一事件（合并）
   timeout: 12                # 单个源的网络超时（秒）
   sina_lid: 2516             # 新浪滚动频道：2516=全球财经，153=财经头条等可换
   section_title: "重要财经新闻"

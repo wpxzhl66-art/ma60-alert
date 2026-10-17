@@ -557,11 +557,15 @@ window.WBcore = (function () {
     };
   }
 
-  /** 名称是否带风险标识：ST / *ST / 退市整理（「XX退」）。
-   *  ⚠️ 口径与后端 src/pattern/core.py 的 RISK_NAME_PAT 保持一致（v1.19.0）；
+  /** 名称是否带风险标识：ST / *ST（前缀）或退市整理（「XX退」）。
+   *  ⚠️ 口径与后端 src/name_rule.py 保持一致 —— 那是全项目唯一真源
+   *  （pattern.core 与 alert.run_alert 都转发到它）。改正则必须两处同步。
+   *  ST 只看**名称前缀**，前缀里允许 * 号、半角/全角空格、·・_- 与老「SST / S*ST」标记；
    *  不能只判 "ST" —— 退市整理期的股票改名成「XX退」，名称里没有 ST。 */
   function isRiskName(name) {
-    return /ST|退/i.test(String(name == null ? '' : name));
+    var s = String(name == null ? '' : name);
+    return /^[\s\u3000*＊·・_\-－]{0,4}s?[\s\u3000*＊·・_\-－]{0,4}st(?![A-Za-z])/i.test(s)
+      || /退\s*$|退市/i.test(s);
   }
 
   /** 简单移动平均；窗口未满的位置为 null */

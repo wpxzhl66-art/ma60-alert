@@ -26,6 +26,9 @@ from pathlib import Path
 from . import pusher, quoter, scanner, template
 from .config import load
 from .ma60_base import build_snapshot, load_snapshot
+# 名称风险判定（ST / *ST / 退市整理）全项目唯一真源：
+# 推送名单（run_scan / run_prepare）与形态扫描（pattern.core）共用同一口径。
+from name_rule import drop_risk_rows, is_risk_name, risk_tag
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "output" / "alert"
@@ -118,7 +121,9 @@ def run_scan(mode: str = "intraday", push: bool = True, force_snapshot: bool = F
     snap = _get_snapshot(force_snapshot)
     quotes = quoter.fetch_quotes(snap.index.tolist())
     trig = scanner.evaluate(snap, quotes, mode=mode)
-    print(f"[{mode}] 触发 {len(trig)} 只")
+    trig, n_risk = drop_risk_rows(trig)
+    print(f"[{mode}] 触发 {len(trig)} 只"
+          + (f"（已剔除 ST / 退市风险股 {n_risk} 只）" if n_risk else ""))
     if len(trig):
         print(trig[MSG_FIELDS].round(3).to_string())
     if push and len(trig):
@@ -192,7 +197,9 @@ def run_test():
 
 def run_demo(cloud: bool = False):
     snap, trig, _ = _evaluate(cloud=cloud, demo=True, force_snapshot=False, dedup=False)
-    print(f"[demo] 模拟全市场+2%：触发 {len(trig)} 只")
+    trig, n_risk = drop_risk_rows(trig)
+    print(f"[demo] 模拟全市场+2%：触发 {len(trig)} 只"
+          + (f"（已剔除 ST / 退市 {n_risk} 只）" if n_risk else ""))
     if len(trig):
         print(trig[MSG_FIELDS].head(20).round(3).to_string())
         title, desp = template.build_message(trig.head(3), "demo")
@@ -280,8 +287,16 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
     """
     snap, trig_all, quotes = _evaluate(cloud=cloud, demo=demo, force_snapshot=False,
                                        mode="demo" if demo else mode, dedup=False)
-    trig = trig_all[trig_all["is_new"]] if len(trig_all) else trig_all
-    print(f"[prepare] 当日触发 {len(trig_all)} 只，其中新触发 {len(trig)} 只")
+    trig_new = trig_all[trig_all["is_new"]] if len(trig_all) else trig_all
+    # 剔除 ST / *ST / 退市整理股：只作用于推送名单（pending）。
+    # trig_all 不动 —— 看板「当日触发」仍是全量，展示层自己再隐藏。
+    trig, n_risk = drop_risk_rows(trig_new)
+    print(f"[prepare] 当日触发 {len(trig_all)} 只，其中新触发 {len(trig_new)} 只"
+          + (f"；剔除 ST / 退市 {n_risk} 只 → 待推 {len(trig)} 只" if n_risk
+             else f"，待推 {len(trig)} 只"))
+    if n_risk and "name" in getattr(trig_new, "columns", []):
+        print("[prepare] 已剔除："
+              + "、".join(f"{n}（{risk_tag(n)}）" for n in trig_new["name"] if risk_tag(n)))
     day = date.today().isoformat()
     result = {"mode": "demo" if demo else mode,
               "day": day, "n": int(len(trig)), "charts": {}}
