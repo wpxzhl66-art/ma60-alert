@@ -27,8 +27,6 @@
 """
 from __future__ import annotations
 
-import re
-
 import numpy as np
 import pandas as pd
 
@@ -209,3 +207,14 @@ def _rec(stage: str, i: int, chg_pct, vr, dd, retrace, span, brk_age, zt=False) 
 def stage_label(stage: str) -> str:
     return {"e4": "阶段④ 今日启动", "e3": "阶段③ 洗盘企稳",
             "e2": "阶段② 刚突破前高"}.get(stage, stage)
+
+
+def brief(rec: dict) -> dict:
+    """明细字段裁剪（看板展示 + 人工复核够用即可，不塞整条记录）。
+
+    实时扫描（pattern/scan.py）与云端 store 扫描（pattern/store_scan.py）共用，
+    避免两处各抄一份、改一处漏一处（v1.22.1 由两处逐字重复收敛到此）。
+    """
+    return {"code": rec.get("code"), "name": rec.get("name"),
+            "stage": rec.get("stage"), "price": rec.get("price"),
+            "chg": rec.get("chg"), "mv": rec.get("mv")}

@@ -33,7 +33,7 @@ from .config import load, state_dir
 from .ma60_base import build_snapshot, load_snapshot
 # 名称风险判定（ST / *ST / 退市整理）全项目唯一真源：
 # 推送名单（run_scan / run_prepare）与形态扫描（pattern.core）共用同一口径。
-from name_rule import drop_risk_rows, is_risk_name, risk_tag
+from name_rule import drop_risk_rows, risk_tag
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "output" / "alert"

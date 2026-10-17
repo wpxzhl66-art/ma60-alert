@@ -7,6 +7,28 @@
 
 ---
 
+## [清理 v1.23.1] — 2026-10-17
+
+**低风险冗余清理 + 修复 1 处期货模块潜在崩溃（pyflakes 引入检测）**
+
+- **去重**：`_brief()`（明细字段裁剪）原在 `pattern/scan.py` 与 `pattern/store_scan.py`
+  逐字重复 → 收敛到 `pattern/core.py: brief()`，两模块改为 `_brief = pc.brief` 别名，
+  调用点零改动。改一处即两处生效，杜绝「改一份漏一份」。
+- **删死导入**：`pattern/core.py` 移除 `import re`（旧 `RISK_NAME_PAT` 正则已迁往
+  `name_rule`，`re` 再无使用者）；`alert/run_alert.py` 导入行移除未用的 `is_risk_name`
+  （实际只用 `drop_risk_rows` / `risk_tag`）。
+- **修 bug**：`fut/core.py: to_weekly()` 自 v1.4.0 起引用未定义常量 `KEEP_WEEKS`，
+  一进该函数即 `NameError`（期货周线转换路径实际不可用）。补
+  `KEEP_WEEKS = 130`，与 `alert.cloud_store` 同口径（判定需 61+13 周，留足余量）。
+- **复核结论**：`check_*` / `test_datasource`（数据源核验报告列为在用工具）、
+  研究流水线（run_study / make_report / export_excel / build_industry_sw / selftest 等）、
+  `core.py` 的 `name_rule` 再导出行（`is_risk_name` 被 scan/store_scan 以 `pc.` 活跃调用）、
+  requirements.txt（6 依赖全在用）——均**有意保留，未动**。
+- 验证：pyflakes 全绿（仅剩再导出的 3 条误报）；pattern/alert/fut 全包导入 OK；
+  `to_weekly` 端到端跑通；`run_alert --help` CLI 完好。
+
+---
+
 ## [推送 v1.23.0] — 2026-10-17
 
 **手动推送一条到手机（明确的人工触发入口 + 结果状态回执）**

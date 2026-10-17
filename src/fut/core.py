@@ -60,6 +60,7 @@ _HEAD = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 HIST_MONTHS = 14          # 全量建库：向前回溯的合约月份数（重建历史加权用）
 LIVE_MONTHS = 30          # 当前在市合约的月份跨度（覆盖全部挂牌合约，不遗漏）
 REBUILD_WORKERS = 8
+KEEP_WEEKS = 130          # 仓内保留周数（与 alert.cloud_store 同口径：判定需 61+13，留足余量）
 MIN_INTERVAL = 0.05       # 全局最小请求间隔（秒），新浪对突发请求不友好
 
 

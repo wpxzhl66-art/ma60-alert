@@ -89,11 +89,8 @@ def _judge(code: str, df: pd.DataFrame, snap: dict, snap_date: str) -> dict | No
     return {**d, "code": code, "stage": STAGE_CODE[d["stage"]], "estage": d["stage"]}
 
 
-def _brief(rec: dict) -> dict:
-    """剔除明细里保留的字段（够看板展示与人工复核即可，不塞整条记录）。"""
-    return {"code": rec.get("code"), "name": rec.get("name"),
-            "stage": rec.get("stage"), "price": rec.get("price"),
-            "chg": rec.get("chg"), "mv": rec.get("mv")}
+# 明细字段裁剪统一用 pattern.core.brief（v1.22.1 去重：原与本模块逐字相同的那份已删）
+_brief = pc.brief
 
 
 def scan(quiet: bool = False) -> dict:
