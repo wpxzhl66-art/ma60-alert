@@ -13,6 +13,11 @@
   python -m alert.run_alert --prepare --cloud [--demo]   # 判定+出图，不推送
   python -m alert.run_alert --notify --sha <commit_sha>  # 组装URL并推送
   python -m alert.run_alert --update-cloud      # 云端数据仓增量更新（store/）
+
+人工触发：
+  python -m alert.run_alert --push --title "标题" --message "正文"   # 手动推送一条到手机
+  python -m alert.run_alert --push --title "标题" --dry-run         # 只验证链路不实际发送
+
 """
 from __future__ import annotations
 
@@ -193,6 +198,74 @@ def run_test():
         "- 触发口径：昨收<60周线 且 现价≥60周线（严格）\n\n"
         f"网页行情示例（贵州茅台 600519）：\n\n{template.ths_links('sh.600519')}")
     print("测试推送", "成功" if key_ok else "失败")
+
+
+def run_manual_push(title: str, desp: str, dry_run: bool | None = None) -> dict:
+    """手动向手机发送一条推送通知，返回结构化结果状态。
+
+    入口：``python -m alert.run_alert --push --title "标题" --message "正文" [--dry-run]``
+
+    复用 ``pusher.send``（开关 / 每日额度 / 3 次重试 / dry-run 全部沿用），
+    并在发送前做明确预检，返回可供人工与脚本消费的结果字典::
+
+        {"ok": bool, "status": str, "detail": str, "remaining": int, "dry_run": bool}
+
+    ``status`` 取值：``sent``（已发送）/ ``dry_run``（仅验证未实际发送）/
+    ``disabled``（总开关关）/ ``no_quota``（额度用尽）/ ``no_key``（未配置密钥）/
+    ``empty``（标题为空）/ ``failed``（网络错误或接口拒绝）。
+    """
+    import os
+    title = (title or "").strip()
+    desp = (desp or "").strip()
+    is_dry = (os.environ.get("ALERT_DRYRUN") == "1") if dry_run is None else bool(dry_run)
+    cfg = load()
+    scfg = cfg.get("serverchan", {})
+
+    if not title:
+        print("[manual-push] ❌ 标题不能为空，未发送")
+        return {"ok": False, "status": "empty", "detail": "标题不能为空",
+                "remaining": pusher.remaining_quota(), "dry_run": is_dry}
+
+    if is_dry:
+        # dry-run：只验证链路；pusher.send 不会真正发送，也不受开关/额度/密钥约束。
+        print("[manual-push] [dry-run] 跳过实际发送，验证链路中…")
+        pusher.send(title, desp or "（无正文）", dry_run=True)
+        print(f"[manual-push] ⚠️ dry-run：未实际发送（链路验证通过）：{title}")
+        return {"ok": True, "status": "dry_run", "detail": "dry-run 模式，未实际发送",
+                "remaining": pusher.remaining_quota(), "dry_run": True}
+
+    # 以下为真实发送前的预检（与 pusher 内部一致，但先给出明确原因）
+    key = os.environ.get("ALERT_SENDKEY") or scfg.get("sendkey", "")
+    if not key:
+        print("[manual-push] ❌ 未配置 Server酱 sendkey"
+              "（alert_config.local.yaml 的 serverchan.sendkey 或环境变量 ALERT_SENDKEY）")
+        return {"ok": False, "status": "no_key", "detail": "未配置 Server酱 sendkey",
+                "remaining": pusher.remaining_quota(), "dry_run": is_dry}
+
+    if not pusher.push_enabled():
+        print(f"[manual-push] ❌ 推送已停用（push.enabled=false），未发送：{title}")
+        return {"ok": False, "status": "disabled", "detail": "push.enabled=false",
+                "remaining": pusher.remaining_quota(), "dry_run": is_dry}
+
+    rem = pusher.remaining_quota()
+    if rem <= 0:
+        print(f"[manual-push] ❌ 今日额度已用尽"
+              f"（{scfg.get('daily_limit', 5)} 条/天），未发送：{title}")
+        return {"ok": False, "status": "no_quota", "detail": "今日推送额度已用尽",
+                "remaining": rem, "dry_run": is_dry}
+
+    if not desp:
+        desp = "（无正文）"
+    print(f"[manual-push] 预检通过，额度剩余 {rem} 条，发送中…")
+    ok = pusher.send(title, desp)
+    rem_after = pusher.remaining_quota()
+    if ok:
+        print(f"[manual-push] ✅ 已发送：{title}（额度剩余 {rem_after} 条）")
+    else:
+        print(f"[manual-push] ❌ 发送失败（网络错误或接口拒绝，已重试 3 次）：{title}")
+    return {"ok": ok, "status": ("sent" if ok else "failed"),
+            "detail": ("已发送" if ok else "网络错误或接口拒绝"),
+            "remaining": rem_after, "dry_run": False}
 
 
 def run_demo(cloud: bool = False):
@@ -515,6 +588,12 @@ def main():
     ap.add_argument("--update-cloud", action="store_true")
     ap.add_argument("--news", action="store_true",
                     help="非交易日财经要闻汇总（刷新看板 + 按配置单独推送）")
+    ap.add_argument("--push", action="store_true",
+                    help="手动向手机发送一条推送（需配合 --title / --message）")
+    ap.add_argument("--title", default="", help="--push 的标题")
+    ap.add_argument("--message", default="", help="--push 的正文（可省略，默认空）")
+    ap.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="只验证链路不实际发送（覆盖 ALERT_DRYRUN 环境变量）")
     ap.add_argument("--cloud", action="store_true", help="用 store 精简仓做快照")
     ap.add_argument("--mode", default="intraday", choices=["intraday", "confirm"])
     ap.add_argument("--sha", default="main")
@@ -541,6 +620,10 @@ def main():
         run_update_cloud()
     elif a.news:
         run_news_summary(cloud=a.cloud)
+    elif a.push:
+        res = run_manual_push(a.title, a.message, dry_run=a.dry_run)
+        print(f"[manual-push] 结果：{json.dumps(res, ensure_ascii=False)}")
+        raise SystemExit(0 if res["ok"] else 1)
     elif a.demo:
         run_demo(cloud=a.cloud)
     else:

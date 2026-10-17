@@ -7,6 +7,22 @@
 
 ---
 
+## [推送 v1.23.0] — 2026-10-17
+
+**手动推送一条到手机（明确的人工触发入口 + 结果状态回执）**
+
+- 新增 `src/alert/run_alert.py: run_manual_push(title, desp, dry_run=None)`，
+  复用 `pusher.send`（完整保留开关 / 每日额度 / 3 次重试 / dry-run 护栏），
+  返回结构化结果 `{"ok","status","detail","remaining","dry_run"}`。
+- CLI 入口：`python -m alert.run_alert --push --title "标题" --message "正文" [--dry-run]`；
+  退出码 0=成功 / 1=失败，便于脚本判断。
+- 结果状态 `status`：``sent``（已发送）/ ``dry_run``（仅验证）/ ``empty``（标题空）/
+  ``no_key``（未配 sendkey）/ ``disabled``（总开关关）/ ``no_quota``（额度用尽）/
+  ``failed``（网络或接口拒绝）。
+- 说明文档 9.1.1 补手动推送用法与状态表。
+
+---
+
 ## [调度 v1.22.0] — 2026-10-17
 
 **非交易日财经要闻汇总 + 可量化的「重要」评分模型**
