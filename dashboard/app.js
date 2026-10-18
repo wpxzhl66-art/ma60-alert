@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.29.0';
+  const APP_VERSION = 'v1.30.0';
 
   const S = {
     data: null,        // data.json
@@ -25,6 +25,7 @@
     codeIndex: null,   // 搜索用
     fut: null,         // fut.json：期货加权指数板块（切到该页才拉）
     futLoading: null,
+    mgn: +(localStorage.getItem('wb_fut_mgn') || 0),  // v1.30.0 单手保证金阈值（0=不限）
     tdx: null,         // tdx_pick.json：通达信选股结果（切到该页才拉）
     tdxLoading: null,
     tdxZone: 'all',    // 通达信选股：当前分档筛选
@@ -56,9 +57,53 @@
     { id: 'dev', label: '偏离', key: (r) => r.dev_pct, abs: true, dir: 'asc' },
     { id: 'price', label: '加权价', key: (r) => r.price, dir: 'desc' },
     { id: 'oi', label: '持仓量', key: (r) => r.oi_sum, dir: 'desc' },
+    { id: 'm1', label: '保证金', key: (r) => r.m1 == null ? -1 : r.m1, dir: 'desc' },
     { id: 'ev', label: '年内上穿', key: (r) => r.up_cnt_1y, dir: 'desc' },
     { id: 'sec', label: '板块', key: (r) => r.sector, dir: 'asc' },
   ];
+
+  /* ---- v1.30.0 单手保证金筛选 ----
+     阈值四档 + 不限；筛除单手保证金「超过」所选阈值的品种。
+     m1 是后端按 加权现价×乘数×保证金率 的估算值（见 src/fut/margins.py），
+     未知（m1=null）的品种不做剔除，行内显示 —。 */
+  const FUT_MGN = [
+    { v: 0, label: '不限' },
+    { v: 5000, label: '≤5千' },
+    { v: 10000, label: '≤1万' },
+    { v: 20000, label: '≤2万' },
+    { v: 50000, label: '≤5万' },
+  ];
+
+  function mgnTxt(v) {                       // 1921 → 1.9千 · 223209 → 22.3万
+    if (v == null || isNaN(v)) return '—';
+    return v >= 10000 ? (v / 10000).toFixed(1) + '万' : (v / 1000).toFixed(1) + '千';
+  }
+
+  function futMgnPass(r) {
+    return !S.mgn || r.m1 == null || r.m1 <= S.mgn;
+  }
+
+  /** 保证金阈值芯片条：写入 #futMgn，选中态立即重画两张列表 */
+  function renderFutMgn() {
+    const box = $('futMgn');
+    if (!box) return;
+    box.innerHTML = '';
+    const tip = el('span', 'scg', '单手保证金');
+    box.appendChild(tip);
+    FUT_MGN.forEach((d) => {
+      const b = el('button', 'chip' + (S.mgn === d.v ? ' on' : ''),
+        d.v ? d.label : '不限');
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        S.mgn = d.v;
+        localStorage.setItem('wb_fut_mgn', String(d.v));
+        renderFutMgn();
+        renderFutList();
+        renderFutAll();
+      });
+      box.appendChild(b);
+    });
+  }
 
   /* 排序字段若不在行内固定展示，就在副标题里补一项，
      否则用户看不出「凭什么这样排」 */
@@ -480,6 +525,7 @@
         '<div class="t1">' + esc(r.name) + '加权 ' + futTag(r.status) +
           ' <span class="tag">' + esc(r.sector) + '</span></div>' +
         '<div class="t2"><span class="code">' + esc(r.code) + '</span>' +
+          '<span>一手约 ' + mgnTxt(r.m1) + '</span>' +
           '<span>60 周线 ' + futPrice(r.ma60) + '</span>' +
           '<span class="' + (r.dev_pct > 0 ? 'up' : 'down') + '">偏离 ' +
             pct(r.dev_pct * 100, 2) + '</span>' +
@@ -505,6 +551,7 @@
           ' <span class="tag">' + esc(r.sector) + '</span></div>' +
         '<div class="t2"><span class="code">' + esc(r.code) + '</span>' +
           '<span>' + esc(r.market) + '</span>' +
+          '<span>一手约 ' + mgnTxt(r.m1) + '</span>' +
           '<span>60 周线 ' + futPrice(r.ma60) + '</span>' +
           '<span>年内上穿 ' + num(r.up_cnt_1y, 0) + ' 次</span>' +
           extraSpan(S.sort.futall.id, r) +
@@ -523,31 +570,40 @@
   /** 期货触发列表（排序变化时单独重画） */
   function renderFutList() {
     const d = S.fut || {};
-    const rows = d.rows || [];
+    const all = d.rows || [];
+    const rows = all.filter(futMgnPass);
     const list = $('futList');
     list.innerHTML = '';
     if (!rows.length) {
       $('futHint').textContent = '';
       list.appendChild(el('div', 'empty',
-        '<div class="big">✅</div>今天没有期货品种靠近长期平均价。'));
+        '<div class="big">✅</div>' + (all.length
+          ? '今天有 ' + all.length + ' 个品种靠近长期平均价，但单手保证金都超过 ' +
+            (S.mgn ? mgnTxt(S.mgn) : '所选') + ' 上限，全部被筛掉了。'
+          : '今天没有期货品种靠近长期平均价。')));
       return;
     }
     const st = S.sort.fut;
     $('futHint').textContent =
-      '共 ' + rows.length + ' 个 · ' + sortTip(curField(FUT_SORTS, st), st.dir);
+      '共 ' + rows.length + (S.mgn ? ' / ' + all.length : '') + ' 个 · ' +
+      (S.mgn ? '单手保证金≤' + mgnTxt(S.mgn) + ' · ' : '') +
+      sortTip(curField(FUT_SORTS, st), st.dir);
     sortRows(rows, FUT_SORTS, st).forEach((r, i) => list.appendChild(futRow(r, i)));
   }
 
   /** 期货全品种列表 */
   function renderFutAll() {
     const d = S.fut || {};
-    const all = d.all || [];
+    const all0 = d.all || [];
+    const all = all0.filter(futMgnPass);
     const hp = d.health || {};
     const list = $('futAllList');
     list.innerHTML = '';
     const st = S.sort.futall;
     $('futAllHint').textContent =
-      all.length + ' 个品种 · ' + sortTip(curField(FUT_SORTS, st), st.dir);
+      all.length + (S.mgn ? ' / ' + all0.length : '') + ' 个品种 · ' +
+      (S.mgn ? '单手保证金≤' + mgnTxt(S.mgn) + ' · ' : '') +
+      sortTip(curField(FUT_SORTS, st), st.dir);
     sortRows(all, FUT_SORTS, st).forEach((r, i) => list.appendChild(futAllRow(r, i)));
     const covered = hp.covered || all.length;
     const total = hp.total || all.length;
@@ -559,6 +615,7 @@
   }
 
   async function renderFutures() {
+    renderFutMgn();                 // v1.30.0：保证金阈值芯片（数据未到也先画）
     const hero = $('futHero');
     hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载期货加权数据…</div>';
     let d;
@@ -571,13 +628,19 @@
       $('futAllList').innerHTML = '';
       return;
     }
-    const rows = d.rows || [];
+    const rows0 = d.rows || [];
+    const rows = rows0.filter(futMgnPass);       // v1.30.0：按单手保证金过滤
+    const mgnHidden = rows0.length - rows.length;
     const all = d.all || [];
     const hp = d.health || {};
     const breakouts = rows.filter((r) => r.status === '突破');
     const nears = rows.filter((r) => r.status !== '突破');
 
     const nearPct = ((d.near_pct || 0.03) * 100).toFixed(0);
+    const mgnNote = mgnHidden
+      ? '<br>另有 <b>' + mgnHidden + '</b> 个品种单手保证金超过 <b>' +
+        mgnTxt(S.mgn) + '</b> 上限，已从下方列表隐藏（点上方芯片可调）。'
+      : '';
     hero.innerHTML =
       '<div class="status ' + (rows.length ? 'warn' : 'ok') + '">' +
         '<div class="emoji">' + (rows.length ? '⚠️' : '✅') + '</div>' +
@@ -590,6 +653,7 @@
               breakouts.length + ' 个刚刚涨上去</b>，另外 ' + nears.length +
               ' 个还在附近晃（还没涨上去）。'
             : '全部 ' + (hp.covered || all.length) + ' 个品种都逐个查过了，没有一个靠近长期平均价。') +
+          mgnNote +
           '</div>' +
         '</div>' +
       '</div>' +

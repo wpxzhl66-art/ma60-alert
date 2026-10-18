@@ -342,6 +342,7 @@ def build_futures() -> dict:
     from fut import core as fcore
     from fut import scan as fscan
     from fut import varieties as fV
+    from fut.margins import margin_per_lot
 
     weekly = fcore.load_weekly()
     daily = fcore.load_daily()
@@ -400,6 +401,8 @@ def build_futures() -> dict:
         for rec in snap.to_dict("records"):
             rec.pop("live", None)
             rec["near"] = rec.get("status") in ("突破", "临近")
+            # v1.30.0：单手保证金估算（元），看板按资金规模过滤用
+            rec["m1"] = margin_per_lot(rec.get("code"), rec.get("price"))
             all_rows.append(rec)
     all_rows.sort(key=lambda r: abs(r.get("dev_pct", 0)))
 
@@ -411,6 +414,7 @@ def build_futures() -> dict:
             rec = {k: (None if isinstance(v, float) and v != v else v)
                    for k, v in rec.items()}
             rec["wk"] = wk_cache.get(sym, [])
+            rec["m1"] = margin_per_lot(sym, rec.get("price"))
             rows_out.append(rec)
         # 触发品种带上「可看图」标记（周线只存一份在 rows 里，避免体积翻倍）
         chartable = {r["code"] for r in rows_out}

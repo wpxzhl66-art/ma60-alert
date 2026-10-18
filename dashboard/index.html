@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.29.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.30.0</span>
   </div>
 </header>
 
@@ -63,7 +63,9 @@
       </div>
       <div class="plain">
         和股票用的是同一套逻辑：看价格是不是回到了<b>长期平均价</b>附近。
+        下方可按<b>单手保证金</b>筛掉资金规模做不起的品种（估算值，随时切换、立即生效）。
       </div>
+      <div class="sortbar" id="futMgn"></div>
       <div class="sortbar" id="futSort"></div>
       <div class="list" id="futList">
         <div class="loading"><span class="spinner"></span></div>
