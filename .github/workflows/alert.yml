@@ -2,17 +2,18 @@ name: 60周线预警
 
 on:
   schedule:
-    # 交易时段冗余触发：每 10 分钟一个点，只覆盖有槽位的小时
-    # （UTC 02:05–03:55 = 北京 10:05–11:55；UTC 06:05–07:55 = 北京 14:05–15:55，共 24 点）。
-    # GitHub 会延迟数小时甚至丢弃 schedule 事件，故用冗余触发点覆盖；
-    # .github/scripts/slot_gate.py 再把它们收敛回五个目标槽位
-    # 10:05 / 11:05 / 14:05 / 14:55 / 15:15 —— 槽位全部落在网格上，
-    # 准点时零延迟命中，事件被丢弃时每个槽位仍有 3 个后续候补点兜底。
-    # 非命中点立即退出（约 10 秒），不安装依赖。
-    - cron: "5,15,25,35,45,55 2-3,6-7 * * 1-5"
+    # 交易时段冗余触发（2026-10-19 槽位改版）：
+    # 目标槽位 09:35 / 10:15 / 13:30 / 14:20 / 15:10（北京时间），
+    # 每个槽位放「准点 + 后 10/20 分钟」共 3 个触发点，准点零延迟命中，
+    # 事件被丢弃时仍有 2 个后续候补点兜底（slot_gate 窗口 30 分钟收敛）。
+    # GitHub 会延迟数小时甚至丢弃 schedule 事件；未命中点立即退出（约 10 秒）。
+    - cron: "35,45,55 1 * * 1-5"     # 北京 09:35（+09:45 / 09:55）
+    - cron: "15,25,35 2 * * 1-5"     # 北京 10:15（+10:25 / 10:35）
+    - cron: "30,40,50 5 * * 1-5"     # 北京 13:30（+13:40 / 13:50）
+    - cron: "20,30,40 6 * * 1-5"     # 北京 14:20（+14:30 / 14:40）
+    - cron: "10,20,30 7 * * 1-5"     # 北京 15:10 收盘确认（+15:20 / 15:30）
     - cron: "7 8 * * 1-5"     # 北京 16:07 数据更新（避开整点负载高峰）
-    - cron: "50 0 * * 6,0"    # 北京 08:50 周六/日：非交易日财经要闻汇总（GitHub 冗余触发，运行幂等）
-    - cron: "50 1 * * 6,0"    # 北京 09:50 周六/日：补触发（GitHub cron 常延迟，双点兜底）
+    - cron: "35,45,55 1 * * 6,0"     # 北京 09:35 周六/日：非交易日财经要闻汇总（+2 候补，news_marks 幂等）
       workflow_dispatch:
         inputs:
           task:
@@ -58,7 +59,7 @@ jobs:
           if [ -z "$TASK" ]; then
             SCH="${{ github.event.schedule }}"
             if [ "$SCH" = "7 8 * * 1-5" ]; then TASK=update
-            elif [ "$SCH" = "50 0 * * 6,0" ] || [ "$SCH" = "50 1 * * 6,0" ]; then TASK=news
+            elif [ "$SCH" = "35,45,55 1 * * 6,0" ]; then TASK=news
             else TASK=scan; fi
           fi
           python3 .github/scripts/slot_gate.py --task "$TASK"
@@ -107,7 +108,7 @@ jobs:
         run: |
           cd src
           # 模式按**闸门给出的实际执行时机**定：cron 实测会延迟 8~9 小时，
-          # 14:05 的触发晚上才送到时再标「盘中」就是错的（补扫一律按收盘确认处理）。
+          # 14:20 的触发晚上才送到时再标「盘中」就是错的（补扫一律按收盘确认处理）。
           MODE="${{ steps.gate.outputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE=intraday
@@ -123,7 +124,7 @@ jobs:
         continue-on-error: true
         if: >-
           steps.scan.conclusion == 'success' &&
-          (github.event.inputs.task == 'confirm' || steps.gate.outputs.slot == '15:15')
+          (github.event.inputs.task == 'confirm' || steps.gate.outputs.slot == '15:10')
         run: |
           cd src
           python -m pattern.store_scan --quiet

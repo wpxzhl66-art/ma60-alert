@@ -216,6 +216,20 @@ def build_quotes() -> dict:
 # --------------------------------------------------------------------------
 # 5. data.json —— 每日动态
 # --------------------------------------------------------------------------
+def _scan_slots() -> tuple[tuple[str, ...], str]:
+    """扫描槽位与收盘确认时间（与 config/alert_config.yaml 保持单一来源）。"""
+    try:
+        from alert.config import load
+        sc = (load().get("scan") or {})
+        intra = tuple(sc.get("intraday_times") or ())
+        confirm = str(sc.get("close_confirm") or "")
+        if intra and confirm:
+            return intra, confirm
+    except Exception:                               # noqa: BLE001
+        pass
+    return ("09:35", "10:15", "13:30", "14:20"), "15:10"
+
+
 def _classify_run(created_utc: str, event: str) -> tuple[str, str]:
     try:
         dt = datetime.fromisoformat(created_utc.replace("Z", "+00:00")).astimezone(CST)
@@ -223,10 +237,11 @@ def _classify_run(created_utc: str, event: str) -> tuple[str, str]:
         return ("手动触发", "manual")
     if event == "schedule":
         hm = dt.strftime("%H:%M")
-        if hm in ("10:05", "11:05", "14:05", "14:55"):
+        intra, confirm = _scan_slots()
+        if hm in intra:
             return (f"盘中扫描 {hm}", "intraday")
-        if hm == "15:15":
-            return ("收盘确认 15:15", "confirm")
+        if hm == confirm:
+            return (f"收盘确认 {confirm}", "confirm")
         if hm == "16:07":
             return ("数据更新 16:07", "update")
         return (f"定时任务 {hm}", "schedule")

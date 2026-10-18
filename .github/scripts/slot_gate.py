@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CN = timezone(timedelta(hours=8))
-SLOTS = ("10:05", "11:05", "14:05", "14:55", "15:15")   # 北京时间
+SLOTS = ("09:35", "10:15", "13:30", "14:20", "15:10")   # 北京时间（2026-10-19 改版）
 WINDOW_MIN = 30       # 槽位到点后 30 分钟内到达都算命中，用于吸收 schedule 延迟
 CLOSE_MIN = 15 * 60   # 收盘线（15:00）：此后执行的扫描一律按「收盘确认」处理
 KEEP_DAYS = 45        # 标记文件保留天数
