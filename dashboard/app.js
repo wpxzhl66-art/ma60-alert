@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.26.0';
+  const APP_VERSION = 'v1.26.1';
 
   const S = {
     data: null,        // data.json
@@ -174,6 +174,22 @@
   }
 
   /** 首页「形态」入口卡：本机或云端扫过才有数据，缺失时整卡隐藏 */
+  /** 两个 YYYY-MM-DD 之间相隔的工作日数（只跳过周末，不含节假日；负数按 0 处理）。
+      v1.26.1：用于判断「历史周K库」落后扫描日是否超过 1 个交易日。 */
+  function businessDaysBetween(a, b) {
+    const d1 = new Date(a + 'T00:00:00');
+    const d2 = new Date(b + 'T00:00:00');
+    if (isNaN(d1) || isNaN(d2) || d2 <= d1) return 0;
+    let n = 0;
+    const cur = new Date(d1);
+    while (cur < d2) {
+      cur.setDate(cur.getDate() + 1);
+      const w = cur.getDay();
+      if (w !== 0 && w !== 6) n++;
+    }
+    return n;
+  }
+
   function fillPatCard() {
     const p = S.pat, box = $('patBox'), card = $('patCard');
     if (!box || !card) return;
@@ -239,8 +255,28 @@
       } else hc.style.display = 'none';
     }
 
-    $('subTitle').textContent = '帮你看住股票 · 数据 ' +
-      (d.health && d.health.last_update ? d.health.last_update : '—');
+    // v1.26.1：区分「扫描日」与「历史周K库落库日」——两者口径不同，
+    // 只显示库日期会被误读成「数据过期」。库落后超过 1 个交易日时标橙提示。
+    (function () {
+      const libDay = (d.health && (d.health.data_date || d.health.last_update)) || '';
+      const scanDay = (d.triggers && d.triggers.day) || d.today || '';
+      const sub = $('subTitle');
+      if (!sub) return;
+      if (libDay && scanDay && libDay !== scanDay) {
+        const lag = businessDaysBetween(libDay, scanDay);
+        const warn = lag > 1;
+        sub.innerHTML = '帮你看住股票 · 扫描 ' + esc(scanDay) + ' · ' +
+          '<span' + (warn
+            ? ' style="color:var(--orange)" title="历史周K库落后 ' + lag +
+              ' 个交易日；名单仍按最新行情计算，滞后的只是归档K线"'
+            : ' title="历史周K库（已归档的周线数据）最新收盘日"') +
+          '>周K库 ' + esc(libDay) + (warn ? '（滞后 ' + lag + ' 个交易日）' : '') + '</span>';
+      } else if (libDay) {
+        sub.textContent = '帮你看住股票 · 数据 ' + libDay;
+      } else {
+        sub.textContent = '帮你看住股票 · 数据 —';
+      }
+    })();
 
     const pill = $('dayPill');
     const isToday = t.day === today;
@@ -900,10 +936,19 @@
         (us.timed_out ? ' · 到时间上限提前收工' : '') + '</div></div>';
     }
 
+    // v1.26.1：这里同样是「库落库日」口径，补上扫描日，避免和首页一样被误读
+    const libDayS = h.last_update || '';
+    const scanDayS = (S.data && S.data.triggers && S.data.triggers.day) || '';
+    const libNote = (libDayS && scanDayS && scanDayS !== libDayS)
+      ? '已做除权复权处理 · 扫描日 ' + scanDayS +
+        (businessDaysBetween(libDayS, scanDayS) > 1
+          ? '（落后 ' + businessDaysBetween(libDayS, scanDayS) + ' 个交易日）' : '')
+      : '已做除权复权处理';
+
     $('healthGrid').innerHTML =
       metric('正在盯着的股票', h.stocks || 0, '只（能算出 60 周平均价的）') +
       metric('攒了多少周的价格', ((h.weekly_rows || 0) / 10000).toFixed(1), '万条记录') +
-      metric('数据最新到哪天', h.last_update || '—', '已做除权复权处理') +
+      metric('周K库最新到哪天', libDayS || '—', libNote) +
       metric('画过的图', h.chart_count || 0, '张（最近 7 个交易日）') +
       metric('数据占用空间', h.store_mb || 0, 'MB') +
       metric('认识多少只股票', h.names_covered || 0, '只（有名称）') +
