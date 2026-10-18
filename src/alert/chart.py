@@ -91,3 +91,95 @@ def chart_url(code: str, day: str | None = None) -> str:
     code6 = code.split(".")[1]
     day = day or pd.Timestamp.today().strftime("%Y-%m-%d")
     return f"{base}/{day}/{code6}.png"
+
+
+# ---------------------------------------------------------------- 当日汇总长图
+# 用途（v1.25.0 方案A「转发件」）：推送末尾附一张当日触发汇总竖图，
+# 用户保存后可直接转发微信群，朋友无需点链接、无需装任何 App。
+_MODE_LABEL = {"scan": "盘中扫描", "confirm": "收盘确认",
+               "update": "数据更新", "demo": "演示"}
+
+
+def render_daily_summary(day: str, trig: pd.DataFrame, out_path: Path,
+                         mode: str = "", max_rows: int = 20) -> Path:
+    """当日 A 股触发名单汇总竖图（微信友好 9:16 比例）。
+
+    trig: prepare 阶段的待推名单（index=code，含 name/price/chg_pct/dev_pct 等）。
+    只展示客观事实与既有回测口径，底部保留「非买入信号」声明（铁律 #3）。
+    """
+    setup_font()
+    trig = trig.copy()
+    trig["_abs"] = (trig["dev_pct"]).abs() if "dev_pct" in trig.columns else 0
+    trig = trig.sort_values("_abs")
+
+    def _f(val: object, d: float = 0.0) -> float:
+        try:
+            v = float(val)
+            return d if v != v else v          # NaN -> 默认值
+        except (TypeError, ValueError):
+            return d
+
+    total = len(trig)
+    rows = trig.head(max_rows)
+    shown = len(rows)
+
+    head_h, row_h, foot_h = 1.55, 0.42, 1.05
+    fig_h = head_h + row_h * max(shown, 1) + foot_h
+    fig = plt.figure(figsize=(6.0, fig_h), dpi=150)
+    fig.patch.set_facecolor("#F2F2F7")            # iOS 浅灰
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    # 头部
+    ax.text(0.07, 0.965, "60周线预警 · 当日汇总", fontsize=17, weight="bold",
+            color="#1C1C1E", va="top")
+    ax.text(0.07, 0.905, f"{day} · {_MODE_LABEL.get(mode, mode)}",
+            fontsize=10.5, color="#8E8E93", va="top")
+    sub = f"触发 {total} 只（已剔除 ST / 退市整理股）"
+    if total > shown:
+        sub += f"，仅列前 {shown} 只（按贴近 60 周线程度排序）"
+    ax.text(0.07, 0.852, sub, fontsize=11, color="#3A3A3C", va="top")
+    ax.plot([0.07, 0.93], [0.815, 0.815], color="#D1D1D6", lw=0.8)
+
+    # 表头
+    y = 0.775
+    cols = [("名称", 0.07, "left"), ("代码", 0.36, "left"),
+            ("现价", 0.53, "right"), ("涨跌%", 0.68, "right"),
+            ("偏离60周线", 0.93, "right")]
+    for label, x0, ha in cols:
+        ax.text(x0, y, label, fontsize=8.5, color="#8E8E93", ha=ha, va="top")
+
+    # 数据行（涨红跌绿，奇偶行浅底）；行区在表头 0.775 与底部线 0.10 之间
+    step = 0.675 / max(shown, 1)
+    for i, (code, r) in enumerate(rows.iterrows()):
+        y = 0.775 - (i + 1) * step
+        if i % 2 == 1:
+            ax.fill_between([0.05, 0.95], y - step * 0.42, y + step * 0.42,
+                            color="#FFFFFF", zorder=0)
+        name = str(r["name"])[:8]
+        chg = _f(r.get("chg_pct"))
+        dev = _f(r.get("dev_pct"))
+        price = _f(r.get("price"))
+        c = UP if chg >= 0 else DOWN
+        ax.text(0.07, y, name, fontsize=11, color="#1C1C1E", va="center")
+        ax.text(0.36, y, str(code).split(".")[-1], fontsize=9.5,
+                color="#8E8E93", va="center")
+        ax.text(0.53, y, f"{price:.2f}", fontsize=11, color="#1C1C1E",
+                ha="right", va="center")
+        ax.text(0.68, y, f"{chg:+.2f}", fontsize=11, color=c, ha="right",
+                va="center")
+        ax.text(0.93, y, f"{dev:+.2f}%", fontsize=11,
+                color=UP if dev >= 0 else DOWN, ha="right", va="center")
+
+    # 底部：声明 + 指引（铁律 #3：信号语义必须保留「非买入信号」）
+    ax.plot([0.07, 0.93], [0.085, 0.085], color="#D1D1D6", lw=0.8)
+    ax.text(0.07, 0.062, "本信号统计上是「掉队风险提示」而非买入机会。",
+            fontsize=9.5, color="#8E8E93", va="top")
+    ax.text(0.07, 0.028, "完整名单、周K图与期货/形态见在线看板",
+            fontsize=9.5, color="#8E8E93", va="top")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return out_path

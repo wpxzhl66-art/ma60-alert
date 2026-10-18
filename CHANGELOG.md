@@ -7,6 +7,30 @@
 
 ---
 
+## [看板 v1.25.0 / 方案A] — 2026-10-18
+
+**新增「微信群分享」能力：每日汇总长图 + ?date= 分享链接（转发件方案）**
+
+- **`src/alert/chart.py`**：新增 `render_daily_summary()` —— 生成当日触发汇总竖版长图
+  （9:16 微信友好），含标题、日期/模式、触发总数说明、前 20 只明细
+  （名称/代码/现价/涨跌%/偏离60周线，涨红跌绿）、底部「掉队风险提示而非买入机会」声明与看板指引。
+- **`src/alert/run_alert.py`**：
+  - `run_prepare`：`share.enabled` 时生成 `charts/<day>/daily.png` 并写入 `result["share_png"]`；
+  - `run_notify`：推送正文末尾追加「当日汇总图（长按/保存后可转发微信群）」+ 在线看板链接，
+    图片走 jsDelivr `@{sha}` 固定版本 URL，推送失败不阻断主流程。
+- **`config/alert_config.yaml`**：新增 `share:` 段（`enabled` / `dashboard_url`）。
+- **`dashboard/app.js`**：新增 `?date=YYYY-MM-DD` 分享参数 —— 打开他人分享的链接时，
+  若该日期与看板当前数据日期不一致，hero 顶部显示橙色横幅提示「这是一条 X 的分享，
+  看板当前展示最新数据（Y）」；无参数或日期一致时不显示。
+  ⚠️ 修复：横幅插入必须在 hero innerHTML 赋值之后，否则会被覆盖（本地探针发现）。
+- **`dashboard/index.html`**：版本徽标同步 v1.25.0。
+- **验证**：真实触发名单（47 只，2026-10-14 intraday）渲染长图目检通过；
+  `node --check` 通过；verify_v150 33/33、probe_pattern 39/39、新增 probe_share 2/2 全过。
+- **使用方式**：收到推送 → 长按保存汇总图 → 转发微信群；或复制推送内看板链接（带 ?date=）发群里。
+  零额外 App、零封号风险（详见 `docs/微信群分享方案_v1.0.0.md` 方案A）。
+
+---
+
 ## [看板 v1.24.0] — 2026-10-18
 
 **整体移除「AI 五维评价」功能 —— 看板不再包含任何大模型 API Key 相关代码**

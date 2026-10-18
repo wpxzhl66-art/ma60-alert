@@ -373,6 +373,16 @@ def run_prepare(cloud: bool = True, demo: bool = False, mode: str = "intraday"):
     day = date.today().isoformat()
     result = {"mode": "demo" if demo else mode,
               "day": day, "n": int(len(trig)), "charts": {}}
+    # v1.25.0 方案A「转发件」：当日汇总长图，供用户保存后转发微信群。
+    # 与周K图同目录、同 commit，notify 用同一 sha 拼 jsDelivr URL。
+    if len(trig) and load().get("share", {}).get("enabled", True):
+        from .chart import render_daily_summary
+        try:
+            out = ROOT / "charts" / day / "daily.png"
+            render_daily_summary(day, trig, out, mode=result["mode"])
+            result["share_png"] = out.relative_to(ROOT).as_posix()
+        except Exception as exc:                        # noqa: BLE001
+            print(f"[share] 汇总长图渲染失败（不影响推送）: {exc}")
     if len(trig):
         OUT.mkdir(parents=True, exist_ok=True)
         # 云端快照在部分路径会丢失索引名称。固定写出 code 列，
@@ -512,6 +522,20 @@ def run_notify(sha: str):
     elif not res["n"]:
         print("[notify] A 股、期货与形态均无内容，跳过推送（不占额度）")
         return
+
+    # v1.25.0 方案A：A 股有触发时，末尾附「当日汇总长图 + 看板链接」，
+    # 用户保存长图即可转发微信群（朋友无需装任何 App）。
+    if res.get("share_png") and res["n"]:
+        cfg = load().get("share", {})
+        base = load()["jump"].get("chart_base_url", "").rstrip("/")
+        if base:
+            png_url = f"{base}@{sha}/{res['share_png']}"
+            share_md = f"\n\n---\n\n**当日汇总图**（长按/保存后可转发微信群）：\n\n" \
+                       f"![当日汇总]({png_url})"
+            dash = cfg.get("dashboard_url", "")
+            if dash:
+                share_md += f"\n\n[在线看板（完整名单/周K/期货）]({dash})"
+            desp += share_md
 
     if pusher.send(title, desp):
         if trig is not None:

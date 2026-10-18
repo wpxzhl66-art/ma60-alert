@@ -27,6 +27,12 @@ jump:
   # 保留 USER/REPO 占位符时图表功能自动关闭
   chart_base_url: "https://cdn.jsdelivr.net/gh/wpxzhl66-art/ma60-alert"
 
+share:
+  # v1.25.0 方案A「转发件」：推送末尾附「当日汇总长图 + 看板链接」，
+  # 用户保存长图即可转发微信群，朋友无需安装任何 App。
+  enabled: true
+  dashboard_url: "https://ma60-alert-dashboard.app.workbuddy.host/"
+
 mktcap_buckets:              # 流通市值档位（亿元，静态口径）
   small_max: 200
   large_min: 800

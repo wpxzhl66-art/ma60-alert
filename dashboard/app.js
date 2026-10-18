@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.24.0';
+  const APP_VERSION = 'v1.25.0';
 
   const S = {
     data: null,        // data.json
@@ -253,6 +253,10 @@
     const pp = $('pushPill');
     if (pp) pp.style.display = (d.push && d.push.enabled === false) ? '' : 'none';
 
+    // v1.25.0 分享参数：?date=YYYY-MM-DD 打开的是某日分享链接时，
+    // 若与看板当前数据日期不一致则提示（data.json 每日覆盖，不留历史）。
+    // 注意：必须在 hero innerHTML 赋值之后插入，否则会被覆盖。
+
     // Hero —— 第一眼就回答「今天要不要紧张」，术语收进可折叠说明
     const modeLabel = t.mode_label || '扫描';
     const ts = t.ts || '';
@@ -303,6 +307,17 @@
         '<div class="s"><i>2</i><span>要紧张就往下翻，<b>点一下股票名字</b>就能看它的周线图。</span></div>' +
         '<div class="s"><i>3</i><span>手里有名单里的股票，去「我的」里<b>记一笔</b>，以后能复盘。</span></div>' +
       '</div>';
+
+    // v1.25.0 分享参数：?date=YYYY-MM-DD 打开的是某日分享链接时，
+    // 若与看板当前数据日期不一致则提示（data.json 每日覆盖，不留历史）。
+    try {
+      const qd = new URLSearchParams(location.search).get('date');
+      if (qd && S.data && S.data.today && qd !== S.data.today) {
+        $('todayHero').insertAdjacentHTML('afterbegin',
+          '<div class="banner" style="background:var(--orange-bg,#FFF3E0);color:var(--orange);margin-bottom:10px">' +
+          '这是一条 ' + esc(qd) + ' 的分享；看板当前展示最新数据（' + esc(S.data.today) + '）。</div>');
+      }
+    } catch (e) { /* 分享参数解析失败不影响主流程 */ }
 
     mountSort('trig', 'trigSort', TRIG_SORTS, renderTrigs);
     renderTrigs();
