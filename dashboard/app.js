@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.25.0';
+  const APP_VERSION = 'v1.26.0';
 
   const S = {
     data: null,        // data.json
@@ -1246,12 +1246,14 @@
         // v1.14.0：期货并入策略一（today）页，随本页显示/切换时渲染
         if (b.dataset.tab === 'today') renderFutures();
         if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机/云端扫描生成
+        // v1.26.0：新闻独立成板块，切到该页时重绘（数据在 boot 时已加载，无需再请求）
+        if (b.dataset.tab === 'news') renderNews();
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
       });
     });
   }
 
-  /** 支持 ?tab=today|system|account 直达（也用于分享与自动截图） */
+  /** 支持 ?tab=today|pattern|news|system|account 直达（也用于分享与自动截图） */
   function applyTabFromUrl() {
     let t = new URL(location.href).searchParams.get('tab');
     if (!t) return;
