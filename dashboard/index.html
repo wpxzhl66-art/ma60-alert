@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.27.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.28.0</span>
   </div>
 </header>
 
@@ -148,26 +148,55 @@
 
   <!-- ==================== 通达信选股（v1.27.0 · 条件选股结果导入） ==================== -->
   <section class="tabpane" id="pane-tdx">
-    <div class="section-label">通达信选股 · 条件筛选结果</div>
+    <div class="section-label">选股 · 条件筛选</div>
+    <div class="sortbar" id="tdxSrc" style="padding:0 2px 10px"></div>
     <div class="card" id="tdxHero">
       <div class="loading"><span class="spinner"></span></div>
     </div>
 
-    <div class="section-label">入选名单</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>上穿 60 周线的股票</h2>
-        <div class="hint" id="tdxHint">—</div>
+    <!-- ===== 数据源①：在线选股（v1.28.0，screener.json 全市场快照，条件本地实时过滤） ===== -->
+    <div id="scWrap">
+      <div class="section-label">筛选条件</div>
+      <div class="card">
+        <div class="plain">点亮条件即组合筛选（各组同时满足）；数据为每日收盘后的快照，<b>不是买入信号</b>。</div>
+        <div class="sortbar" id="scChg"></div>
+        <div class="sortbar" id="scSig"></div>
+        <div class="sortbar" id="scLiq"></div>
+        <div class="sortbar" id="scOpt"></div>
       </div>
-      <div class="plain">
-        这里放的是<b>通达信条件选股</b>的结果，原样导入，不改判。<b>点一下股票名字</b>能看周线图。
+
+      <div class="section-label">筛选结果</div>
+      <div class="card">
+        <div class="card-head">
+          <h2>符合条件的股票</h2>
+          <div class="hint" id="scHint">—</div>
+        </div>
+        <div class="sortbar" id="scSort"></div>
+        <div class="list" id="scList">
+          <div class="loading"><span class="spinner"></span></div>
+        </div>
+        <div class="note" id="scNote"></div>
       </div>
-      <div class="sortbar" id="tdxZone"></div>
-      <div class="sortbar" id="tdxSort"></div>
-      <div class="list" id="tdxList">
-        <div class="loading"><span class="spinner"></span></div>
+    </div>
+
+    <!-- ===== 数据源②：通达信导入（v1.27.0，tdx_pick.json，原样导入不改判） ===== -->
+    <div id="tdxImport" hidden>
+      <div class="section-label">通达信导入名单</div>
+      <div class="card">
+        <div class="card-head">
+          <h2>上穿 60 周线的股票</h2>
+          <div class="hint" id="tdxHint">—</div>
+        </div>
+        <div class="plain">
+          这里放的是<b>通达信条件选股</b>的结果，原样导入，不改判。<b>点一下股票名字</b>能看周线图。
+        </div>
+        <div class="sortbar" id="tdxZone"></div>
+        <div class="sortbar" id="tdxSort"></div>
+        <div class="list" id="tdxList">
+          <div class="loading"><span class="spinner"></span></div>
+        </div>
+        <div class="note" id="tdxNote"></div>
       </div>
-      <div class="note" id="tdxNote"></div>
     </div>
   </section>
 

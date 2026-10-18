@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.27.0';
+  const APP_VERSION = 'v1.28.0';
 
   const S = {
     data: null,        // data.json
@@ -30,6 +30,10 @@
     tdx: null,         // tdx_pick.json：通达信选股结果（切到该页才拉）
     tdxLoading: null,
     tdxZone: 'all',    // 通达信选股：当前分档筛选
+    scMode: 'sc',      // 选股页数据源：'sc'=在线选股 / 'tdx'=通达信导入
+    screener: null,    // screener.json：全市场选股快照（切到该页才拉）
+    screenerLoading: null,
+    sc: { chg: '', sig: new Set(), liq: new Set(), noSt: true },  // 在线选股条件
     news: null,       // news.json：三家财经源的重要新闻（相似项已合并）
     sort: C.sort,      // 各列表的当前排序（由 core.js 维护）
   };
@@ -901,11 +905,14 @@
 
   }
 
-  /* ------------------------------------------------ 视图：通达信选股（v1.27.0）
-     数据 = dashboard/tdx_pick.json，由 src/tdx/import_pick.py 从通达信条件选股
-     （MCP tdx_screener）的结果转换而来；原始导出留在 data/tdx/raw/ 备查。
-     前端只做展示、排序、分档，**不重新判定条件** —— 口径以选股器为准，
-     避免两套算法给出不一致的名单。 */
+  /* ------------------------------------------------ 视图：选股（v1.28.0）
+     同页两个数据源，顶部芯片切换：
+     ① 在线选股 —— dashboard/screener.json（全市场快照，由
+        src/dashboard/screener.py 从 data/daily hfq 日线库计算；复权价的比例
+        运算与复权因子无关，现价取 quotes.json）。条件在浏览器本地实时过滤。
+     ② 通达信导入 —— dashboard/tdx_pick.json，由 src/tdx/import_pick.py 从
+        通达信条件选股结果转换而来；原始导出留在 data/tdx/raw/ 备查。
+        前端只做展示、排序、分档，**不重新判定条件** —— 口径以选股器为准。 */
   const TDX_ZONES = [
     { id: 'all', label: '全部' },
     { id: 'fresh', label: '刚上穿' },
@@ -922,6 +929,194 @@
     { id: 'ind', label: '行业', key: (r) => r.industry, dir: 'asc' },
   ];
 
+  /* ---- 在线选股：条件定义（全部为收盘后快照字段，见 screener.py 头注释） ---- */
+  const SC_CHG = [
+    { id: '', label: '涨跌幅 全部' },
+    { id: 'up6', label: '涨>6%', test: (r) => r.pc > 6 },
+    { id: 'up', label: '红盘', test: (r) => r.pc > 0 },
+    { id: 'down', label: '绿盘', test: (r) => r.pc < 0 },
+    { id: 'down3', label: '跌<-3%', test: (r) => r.pc < -3 },
+  ];
+  const SC_SIGS = [
+    { id: 'x20', label: '上穿20日线', test: (r) => r.x20 === 1 },
+    { id: 'x60', label: '上穿60日线', test: (r) => r.x60 === 1 },
+    { id: 'mb', label: '均线多头', test: (r) => r.mb === 1 },
+    { id: 'ud3', label: '连涨3天', test: (r) => r.ud >= 3 },
+    { id: 'h20', label: '20日新高', test: (r) => r.h20 === 1 },
+    { id: 'wx', label: '上穿60周线', test: (r) => r.wx === 1 },
+    { id: 'w60n', label: '贴60周线±2%', test: (r) => r.w60 != null && Math.abs(r.w60) <= 2 },
+  ];
+  const SC_LIQS = [
+    { id: 'vr15', label: '量比≥1.5', test: (r) => r.vr >= 1.5 },
+    { id: 't3', label: '换手≥3%', test: (r) => r.t >= 3 },
+    { id: 'am5', label: '成交额≥5亿', test: (r) => r.am >= 5 },
+  ];
+  const SC_SORTS = [
+    { id: 'chg', label: '涨跌幅', key: (r) => r.pc, dir: 'desc' },
+    { id: 'vr', label: '量比', key: (r) => r.vr, dir: 'desc' },
+    { id: 't', label: '换手', key: (r) => r.t, dir: 'desc' },
+    { id: 'w60', label: '偏离60周线', key: (r) => r.w60, abs: true, dir: 'asc' },
+    { id: 'price', label: '股价', key: (r) => r.p, dir: 'desc' },
+  ];
+  const SC_SIG_TEXT = { x20: '上穿20', x60: '上穿60', mb: '多头', ud3: '连涨', h20: '新高', wx: '上穿60周', w60n: '贴60周' };
+
+  function loadScreener() {
+    if (S.screener) return Promise.resolve(S.screener);
+    if (S.screenerLoading) return S.screenerLoading;
+    S.screenerLoading = loadJSON('screener.json').then((d) => { S.screener = d; return d; })
+      .catch((e) => { S.screenerLoading = null; throw e; });
+    return S.screenerLoading;
+  }
+
+  function scFiltered() {
+    const all = (S.screener && S.screener.rows) || [];
+    const c = S.sc;
+    const chg = SC_CHG.find((x) => x.id === c.chg);
+    const sigs = SC_SIGS.filter((x) => c.sig.has(x.id));
+    const liqs = SC_LIQS.filter((x) => c.liq.has(x.id));
+    return all.filter((r) => {
+      if (c.noSt && isRiskName(r.n)) return false;
+      if (chg && chg.test && !chg.test(r)) return false;
+      for (const s of sigs) if (!s.test(r)) return false;
+      for (const s of liqs) if (!s.test(r)) return false;
+      return true;
+    });
+  }
+
+  function scRow(r, i) {
+    const row = el('div', 'row tap');
+    const tags = [];
+    for (const s of SC_SIGS) {
+      if (S.sc.sig.has(s.id) || !s.test(r)) continue;
+      if (tags.length < 2) tags.push('<span class="lv sig">' + SC_SIG_TEXT[s.id] + '</span>');
+    }
+    const t2 = [
+      '<span>偏离60周 ' + (r.w60 == null ? '—' : pct(r.w60, 1)) + '</span>',
+      '<span>量比 ' + num(r.vr, 2) + '</span>',
+      '<span>换手 ' + pct(r.t, 1) + '</span>',
+    ];
+    row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="grow">' +
+        '<div class="t1">' + esc(r.n) +
+          tags.join('') +
+          (r.i ? ' <span class="tag">' + esc(r.i) + '</span>' : '') +
+        '</div>' +
+        '<div class="t2">' + t2.join('') + '</div>' +
+      '</div>' +
+      '<div class="r">' +
+        '<div class="p">' + num(r.p, 2) + '</div>' +
+        '<div class="s ' + cls(r.pc) + '">' + pct(r.pc, 2) + '</div>' +
+      '</div>';
+    row.addEventListener('click', () => openKline(r.c, r.n, { code: r.c, name: r.n, price: r.p, chg: r.pc }));
+    return row;
+  }
+
+  function renderScList() {
+    const list = $('scList'), hint = $('scHint');
+    if (!list || !S.screener) return;
+    const rows = scFiltered();
+    const total = S.screener.counts.total || 0;
+    list.innerHTML = '';
+    const condN = S.sc.sig.size + S.sc.liq.size + (S.sc.chg ? 1 : 0);
+    hint.textContent = '命中 ' + rows.length + ' / ' + total + ' 只' +
+      (condN ? ' · ' + condN + ' 个条件' : ' · 未加条件') +
+      (S.sort.sc ? ' · ' + sortTip(curField(SC_SORTS, S.sort.sc), S.sort.sc.dir) : '');
+    if (!rows.length) {
+      list.appendChild(el('div', 'empty', '<div class="big">🔍</div>当前条件组合没有命中，试着放宽一两个条件。'));
+      return;
+    }
+    if (rows.length > 400) rows.length = 400;   // 渲染上限，避免移动端卡顿
+    sortRows(rows, SC_SORTS, S.sort.sc).forEach((r, i) => list.appendChild(scRow(r, i)));
+  }
+
+  function scChipBox(boxId, label, defs, isOn, toggle) {
+    const box = $(boxId);
+    box.innerHTML = '';
+    const lab = el('span', 'scg', label);
+    box.appendChild(lab);
+    defs.forEach((d) => {
+      const b = el('button', 'chip' + (isOn(d) ? ' on' : ''), d.label);
+      b.type = 'button';
+      b.addEventListener('click', () => { toggle(d); renderScList(); });
+      box.appendChild(b);
+    });
+  }
+
+  function buildScCond() {
+    scChipBox('scChg', '涨跌幅', SC_CHG,
+      (d) => S.sc.chg === d.id,
+      (d) => { S.sc.chg = d.id; buildScCond(); });
+    scChipBox('scSig', '趋势信号', SC_SIGS,
+      (d) => S.sc.sig.has(d.id),
+      (d) => { S.sc.sig.has(d.id) ? S.sc.sig.delete(d.id) : S.sc.sig.add(d.id); buildScCond(); });
+    scChipBox('scLiq', '流动性', SC_LIQS,
+      (d) => S.sc.liq.has(d.id),
+      (d) => { S.sc.liq.has(d.id) ? S.sc.liq.delete(d.id) : S.sc.liq.add(d.id); buildScCond(); });
+    // 其它：剔除 ST/退市（默认开）+ 重置
+    const opt = $('scOpt');
+    opt.innerHTML = '';
+    opt.appendChild(el('span', 'scg', '其它'));
+    const st = el('button', 'chip' + (S.sc.noSt ? ' on' : ''), '剔除ST/退市');
+    st.type = 'button';
+    st.addEventListener('click', () => { S.sc.noSt = !S.sc.noSt; buildScCond(); renderScList(); });
+    opt.appendChild(st);
+    const rst = el('button', 'chip', '重置条件');
+    rst.type = 'button';
+    rst.addEventListener('click', () => {
+      S.sc.chg = ''; S.sc.sig = new Set(); S.sc.liq = new Set(); S.sc.noSt = true;
+      buildScCond(); renderScList();
+    });
+    opt.appendChild(rst);
+  }
+
+  async function renderScHero() {
+    const hero = $('tdxHero');
+    if (!S.screener) {
+      hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载全市场快照…</div>';
+    }
+    let d;
+    try {
+      d = await loadScreener();
+    } catch (e) {
+      hero.innerHTML = '<div class="banner err">选股快照加载失败：' + esc(e.message) +
+        '<br><br>该文件由 <span class="code">src/dashboard/screener.py</span> 每日生成' +
+        '（python -m dashboard.screener），请确认 dashboard/screener.json 已生成。</div>';
+      $('scList').innerHTML = '';
+      $('scHint').textContent = '—';
+      return;
+    }
+    const total = d.counts.total || 0;
+    const stale = d.day && S.data && S.data.today && d.day !== S.data.today;
+    hero.innerHTML =
+      '<div class="status ok">' +
+        '<div class="emoji">🔎</div>' +
+        '<div class="body">' +
+          '<div class="title">全市场 ' + total.toLocaleString() + ' 只 · 在线条件选股</div>' +
+          '<div class="desc">覆盖沪深京在市股票（已剔无行情 ' + (d.skipped || 0) + ' 只）。' +
+            '点亮下方条件即可组合筛选，全部为<b>收盘后</b>数据。' +
+            '选股条件只是缩小观察范围，<b>不是买入信号</b>。</div>' +
+        '</div>' +
+      '</div>' +
+      '<details class="help"><summary>这一页是什么？该怎么用？</summary>' +
+        '<div class="help-body">' +
+          '<span class="q"><b>数据从哪来？</b>每日更新轮从本地日线库算出均线偏离、上穿、' +
+            '多头排列、连涨、量比等指标，打成全市场快照（' + esc(d.updated || '') + ' 刷新）。</span>' +
+          '<span class="q"><b>条件怎么组合？</b>涨跌幅组单选；趋势、流动性组内点亮多个条件 = ' +
+            '同时满足（且）；各组之间也是且。结果实时在浏览器过滤，不联网。</span>' +
+          '<span class="q"><b>「上穿60周线」和通达信导入有何不同？</b>本页是系统按同一类规则' +
+            '对全市场的每日计算；「通达信导入」页签是通达信选股器的结果原样导入，口径以它为准。</span>' +
+          '<span class="q"><b>⚠️ 定性</b>：任何条件组合都只是观察清单，不构成投资建议。</span>' +
+        '</div>' +
+      '</details>' +
+      (stale ? '<div class="banner">快照数据日是 ' + esc(d.day) + '，不是今天（' +
+        esc(S.data && S.data.today) + '）—— 今天的更新轮还没有跑完。</div>' : '');
+    buildScCond();
+    mountSort('sc', 'scSort', SC_SORTS, renderScList);
+    renderScList();
+  }
+
+  /* ---- 通达信导入子视图（v1.27.0 逻辑原样保留） ---- */
   function loadTdx() {
     if (S.tdx) return Promise.resolve(S.tdx);
     if (S.tdxLoading) return S.tdxLoading;
@@ -983,7 +1178,31 @@
     });
   }
 
+  function setTdxMode(mode) {
+    S.scMode = mode;
+    $('scWrap').hidden = mode !== 'sc';
+    $('tdxImport').hidden = mode !== 'tdx';
+    document.querySelectorAll('#tdxSrc .chip').forEach((c) =>
+      c.classList.toggle('on', c.dataset.src === mode));
+    if (mode === 'sc') renderScHero();
+    else renderTdx();
+  }
+
   async function renderTdx() {
+    // 顶部数据源切换芯片（只建一次）
+    if (!$('tdxSrc').dataset.built) {
+      const box = $('tdxSrc');
+      [{ id: 'sc', label: '🔎 在线选股' }, { id: 'tdx', label: '📥 通达信导入' }].forEach((s) => {
+        const b = el('button', 'chip' + (S.scMode === s.id ? ' on' : ''), s.label);
+        b.type = 'button';
+        b.dataset.src = s.id;
+        b.addEventListener('click', () => setTdxMode(s.id));
+        box.appendChild(b);
+      });
+      box.dataset.built = '1';
+    }
+    if (S.scMode === 'sc') { renderScHero(); return; }
+
     const hero = $('tdxHero');
     if (!hero) return;
     if (!S.tdx) hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载选股结果…</div>';

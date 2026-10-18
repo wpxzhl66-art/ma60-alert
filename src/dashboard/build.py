@@ -586,9 +586,10 @@ def main() -> None:
     ap.add_argument("--data", action="store_true")
     ap.add_argument("--futures", action="store_true", help="期货板块 fut.json")
     ap.add_argument("--pattern", action="store_true", help="右侧反转形态 pattern.json")
+    ap.add_argument("--screener", action="store_true", help="全市场选股快照 screener.json")
     a = ap.parse_args()
     if not any([a.all, a.daily, a.weekly, a.names, a.static, a.quotes, a.data,
-                a.futures, a.pattern]):
+                a.futures, a.pattern, a.screener]):
         a.all = True
 
     static_obj = None
@@ -610,6 +611,12 @@ def main() -> None:
         build_data(static_obj)
     if a.all or a.daily or a.weekly or a.futures:
         build_futures()
+    # 选股快照（v1.28.0）：并入 --daily，16:07 更新轮每天刷新。
+    # 必须在 build_quotes 之后（现价取 quotes.json）。云端无 data/daily 时
+    # _calc_one 全部返回 None，产物为空表，不会误报崩溃。
+    if a.all or a.daily or a.screener:
+        from dashboard.screener import build_screener
+        build_screener()
     # 形态数据由形态扫描专属产出（本机 pattern.scan / 云端 pattern.store_scan），
     # 不与 --daily 联动：数据更新轮不跑形态扫描，latest.json 还停在上一次扫描，
     # 重建只会无谓地触碰 dashboard/pattern.json（两道防回退保护能兜住，但没必要）。
