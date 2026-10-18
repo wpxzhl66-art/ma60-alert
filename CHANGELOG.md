@@ -7,6 +7,30 @@
 
 ---
 
+## [看板 v1.29.0] — 2026-10-18
+
+**移除【策略二】（右侧反转形态）板块**
+
+- **导航**：底部导航/桌面侧栏删去「🔥 策略二」，现为 5 项
+  （策略一 / 选股 / 新闻 / 系统 / 我的）。
+- **页面**：整页 `#pane-pattern`（形态 Hero、A/B/C 三档名单、形态口径脚注）删除。
+- **策略一页**：删除「今天突然大涨的股票」形态入口卡（#patCard）及其
+  `fillPatCard()` 渲染逻辑、boot 时的 pattern.json 预取。
+- **路由**：`?tab=pattern` 旧分享链接回落到策略一页（与 ?tab=futures 同策略）。
+- **JS 清理**：S.pat/patLoading 状态、loadPattern/patRow/renderPatList/
+  renderPattern、PAT_SORTS/PAT_EXTRA、tab 切换钩子全部移除；
+  style.css 删除仅形态页使用的 `.rej` 样式块（`.tag.bo`/`.hist-link`
+  仍被历史列表使用，保留）。
+- **后端不动**：`src/pattern/`、pattern.json 扫描与 `build.py --pattern`
+  保留（数据仍在仓库，仅前端不再消费）；如需彻底停扫另行处理。
+- **探针**：probe_pattern.js 删除；probe_news/probe_tdx/probe_sidebar
+  改 5 项导航断言，并新增「无策略二残留」断言（导航/DOM/页面文字/
+  旧链接回落）；probe_tdx 版本断言改为动态读 APP_VERSION。
+- 回归：probe_news 22 / probe_tdx 36 / probe_sidebar 15 / probe_dates 10 /
+  probe_share 2 / verify_v150 33 全过。
+
+---
+
 ## [看板 v1.28.0] — 2026-10-18
 
 **选股板块升级：在线条件选股（全市场快照 + 本地条件组合筛选）**

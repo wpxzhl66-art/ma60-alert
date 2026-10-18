@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.28.0</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.29.0</span>
   </div>
 </header>
 
@@ -33,10 +33,6 @@
 
     <div class="card" id="histCard" style="display:none">
       <div class="card-body hist-link" id="histBox" style="padding:13px 16px"></div>
-    </div>
-
-    <div class="card" id="patCard" style="display:none">
-      <div class="card-body hist-link" id="patBox" style="padding:13px 16px"></div>
     </div>
 
     <div class="section-label">一只一只看</div>
@@ -88,61 +84,6 @@
         <div class="loading"><span class="spinner"></span></div>
       </div>
       <div class="note" id="futAllNote"></div>
-    </div>
-  </section>
-
-  <!-- ==================== 策略二（大涨股 · 来自 雾绵） ==================== -->
-  <section class="tabpane" id="pane-pattern">
-    <div class="section-label">策略二 · 来自 雾绵</div>
-    <div class="card" id="patHero">
-      <div class="loading"><span class="spinner"></span></div>
-    </div>
-
-    <div class="section-label">今天突然大涨的 · 最要小心</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>今天涨停 / 大涨的股票</h2>
-        <div class="hint" id="patAHint">—</div>
-      </div>
-      <div class="plain">
-        看着最猛的时候买进去，历史上是<b>亏钱最多</b>的一种做法。
-      </div>
-      <div class="list" id="patAList">
-        <div class="loading"><span class="spinner"></span></div>
-      </div>
-    </div>
-
-    <div class="section-label">涨完跌下来、跌不动的</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>冲高之后回踩、卖压变小了</h2>
-        <div class="hint" id="patBHint">—</div>
-      </div>
-      <div class="plain">
-        这一类比上面那类<b>好一些</b>，但历史上仍然是跑输大盘的。
-      </div>
-      <div class="list" id="patBList">
-        <div class="loading"><span class="spinner"></span></div>
-      </div>
-    </div>
-
-    <div class="section-label">刚冲过前一次高点的</div>
-    <div class="card">
-      <div class="card-head">
-        <h2>刚创出近期新高的股票</h2>
-        <div class="hint" id="patCHint">—</div>
-      </div>
-      <div class="plain">
-        常见的想法是「突破了就该追」，但历史数据<b>不支持</b>这个做法。
-      </div>
-      <div class="sortbar" id="patCSort"></div>
-      <div class="list" id="patCList">
-        <div class="loading"><span class="spinner"></span></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="note" id="patNote"></div>
     </div>
   </section>
 
@@ -317,7 +258,6 @@
 <nav class="tabbar">
   <div class="inner">
     <button class="on" data-tab="today"><span class="ico">📊</span>策略一</button>
-    <button data-tab="pattern"><span class="ico">🔥</span>策略二</button>
     <button data-tab="tdx"><span class="ico">🎯</span>选股</button>
     <button data-tab="news"><span class="ico">📰</span>新闻</button>
     <button data-tab="system"><span class="ico">⚙️</span>系统</button>
