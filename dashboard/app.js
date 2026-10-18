@@ -15,7 +15,7 @@
           isRiskName } = C;
 
   // 交付物版本号：每次改动递增，界面右上角可见（见 CHANGELOG.md）
-  const APP_VERSION = 'v1.26.1';
+  const APP_VERSION = 'v1.27.0';
 
   const S = {
     data: null,        // data.json
@@ -27,6 +27,9 @@
     futLoading: null,
     pat: null,         // pattern.json：右侧反转形态板块（切到该页才拉）
     patLoading: null,
+    tdx: null,         // tdx_pick.json：通达信选股结果（切到该页才拉）
+    tdxLoading: null,
+    tdxZone: 'all',    // 通达信选股：当前分档筛选
     news: null,       // news.json：三家财经源的重要新闻（相似项已合并）
     sort: C.sort,      // 各列表的当前排序（由 core.js 维护）
   };
@@ -898,6 +901,190 @@
 
   }
 
+  /* ------------------------------------------------ 视图：通达信选股（v1.27.0）
+     数据 = dashboard/tdx_pick.json，由 src/tdx/import_pick.py 从通达信条件选股
+     （MCP tdx_screener）的结果转换而来；原始导出留在 data/tdx/raw/ 备查。
+     前端只做展示、排序、分档，**不重新判定条件** —— 口径以选股器为准，
+     避免两套算法给出不一致的名单。 */
+  const TDX_ZONES = [
+    { id: 'all', label: '全部' },
+    { id: 'fresh', label: '刚上穿' },
+    { id: 'hold', label: '已站上' },
+    { id: 'far', label: '远离' },
+  ];
+  const TDX_ZONE_TEXT = { fresh: '刚上穿', hold: '已站上', far: '远离' };
+
+  /* 默认按偏离升序（abs）：越贴线越靠前，形态最新鲜 */
+  const TDX_SORTS = [
+    { id: 'dev', label: '偏离', key: (r) => r.dev_pct, abs: true, dir: 'asc' },
+    { id: 'chg', label: '涨跌幅', key: (r) => r.chg, dir: 'desc' },
+    { id: 'price', label: '股价', key: (r) => r.price, dir: 'desc' },
+    { id: 'ind', label: '行业', key: (r) => r.industry, dir: 'asc' },
+  ];
+
+  function loadTdx() {
+    if (S.tdx) return Promise.resolve(S.tdx);
+    if (S.tdxLoading) return S.tdxLoading;
+    S.tdxLoading = loadJSON('tdx_pick.json').then((d) => { S.tdx = d; return d; })
+      .catch((e) => { S.tdxLoading = null; throw e; });
+    return S.tdxLoading;
+  }
+
+  function tdxRows() {
+    const all = (S.tdx && S.tdx.rows) || [];
+    return all.filter((r) => S.tdxZone === 'all' || r.zone === S.tdxZone);
+  }
+
+  function tdxRow(r, i) {
+    const row = el('div', 'row tap');
+    const z = TDX_ZONE_TEXT[r.zone] || '';
+    const t2 = [
+      '<span class="code">' + esc(r.tdx_code || String(r.code).replace('.', '')) + '</span>',
+      '<span>偏离 ' + pct(r.dev_pct, 2) + '</span>',
+      '<span>60 周线 ' + num(r.ma60w, 2) + '</span>',
+    ];
+    row.innerHTML =
+      '<div class="idx">' + (i + 1) + '</div>' +
+      '<div class="grow">' +
+        '<div class="t1">' + esc(r.name) +
+          (z ? ' <span class="lv ' + esc(r.zone) + '">' + esc(z) + '</span>' : '') +
+          (r.industry ? ' <span class="tag">' + esc(r.industry) + '</span>' : '') +
+        '</div>' +
+        '<div class="t2">' + t2.join('') + '</div>' +
+      '</div>' +
+      '<div class="r">' +
+        '<div class="p">' + num(r.price, 2) + '</div>' +
+        '<div class="s ' + cls(r.chg) + '">' + pct(r.chg, 2) + '</div>' +
+      '</div>';
+    row.addEventListener('click', () => openKline(r.code, r.name, r));
+    return row;
+  }
+
+  function renderTdxList() {
+    const list = $('tdxList'), hint = $('tdxHint');
+    if (!list) return;
+    const rows = tdxRows();
+    const all = (S.tdx && S.tdx.rows) || [];
+    list.innerHTML = '';
+    const cur = S.tdxZone === 'all' ? '' : ' · ' + TDX_ZONE_TEXT[S.tdxZone] + '一类';
+    hint.textContent = rows.length + ' 只' + cur +
+      (S.sort.tdx ? ' · ' + sortTip(curField(TDX_SORTS, S.sort.tdx), S.sort.tdx.dir) : '');
+    if (!rows.length) {
+      list.appendChild(el('div', 'empty', '<div class="big">📭</div>这一档暂时没有股票。'));
+      return;
+    }
+    sortRows(rows, TDX_SORTS, S.sort.tdx).forEach((r, i) => list.appendChild(tdxRow(r, i)));
+    // 筛选条同步「全部 N 只 / 分档 N 只」的数量，避免用户以为某档丢数据
+    document.querySelectorAll('#tdxZone .chip').forEach((c) => {
+      const z = c.dataset.zone;
+      const n = z === 'all' ? all.length : all.filter((r) => r.zone === z).length;
+      const base = (TDX_ZONES.filter((x) => x.id === z)[0] || {}).label || '';
+      c.textContent = base + ' ' + n;
+    });
+  }
+
+  async function renderTdx() {
+    const hero = $('tdxHero');
+    if (!hero) return;
+    if (!S.tdx) hero.innerHTML = '<div class="loading"><span class="spinner"></span> 正在加载选股结果…</div>';
+    let d;
+    try {
+      d = await loadTdx();
+    } catch (e) {
+      hero.innerHTML = '<div class="banner err">选股结果加载失败：' + esc(e.message) +
+        '<br><br>该文件由 <span class="code">src/tdx/import_pick.py</span> 从通达信选股结果生成，' +
+        '请确认已生成 dashboard/tdx_pick.json。</div>';
+      $('tdxList').innerHTML = '';
+      $('tdxHint').textContent = '—';
+      return;
+    }
+
+    if (!hero.dataset.built) {
+      // 分档筛选条只建一次，之后只更新计数
+      const zbox = $('tdxZone');
+      zbox.innerHTML = '';
+      TDX_ZONES.forEach((z) => {
+        const b = el('button', 'chip' + (S.tdxZone === z.id ? ' on' : ''), z.label);
+        b.type = 'button';
+        b.dataset.zone = z.id;
+        b.addEventListener('click', () => {
+          S.tdxZone = z.id;
+          zbox.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x.dataset.zone === z.id));
+          renderTdxList();
+        });
+        zbox.appendChild(b);
+      });
+      hero.dataset.built = '1';
+    }
+
+    const c = d.counts || {};
+    const src = d.source || {};
+    const fresh = c.fresh || 0, hold = c.hold || 0, far = c.far || 0;
+    const today = S.data && S.data.today;
+    const stale = d.day && today && d.day !== today;
+    const topInd = (d.top_industries || []).map((x) => x.name + ' ' + x.n).join('、');
+
+    hero.innerHTML =
+      '<div class="status ' + ((c.total || 0) ? 'warn' : 'ok') + '">' +
+        '<div class="emoji">🎯</div>' +
+        '<div class="body">' +
+          '<div class="title">' + (c.total || 0) + ' 只股票今天上穿 60 周线（已排除 ST）</div>' +
+          '<div class="desc">名单来自<b>通达信条件选股</b>，原样导入。' +
+            '其中 <b>' + fresh + ' 只</b>刚站上（偏离 ≤2%），' +
+            '<b>' + far + ' 只</b>已远离（>10%）。' +
+            '上穿只说明长期趋势转强，<b>不是买入信号</b>。</div>' +
+        '</div>' +
+      '</div>' +
+      '<details class="help"><summary>这一页是什么？该怎么看？</summary>' +
+        '<div class="help-body">' +
+          '<span class="q"><b>「60 周线」是什么？</b>' +
+            '把这只股票过去 60 周每周的收盘价加起来除以 60，就是它的长期平均价，也叫 60 周均线。</span>' +
+          '<span class="q"><b>「上穿」是怎么判的？</b>' +
+            '上周收盘价还在 60 周线下方（或正好贴着），本周收盘价站到它上方。' +
+            '本周与上周的收盘价都要看，只看「现在在线上方」会混入早就站上的股票。</span>' +
+          '<span class="q"><b>和「策略一」有什么区别？</b>' +
+            '策略一是系统自己算的<b>触及</b>名单（跌久了刚爬回均线附近，属掉队风险提示）；' +
+            '这一页是<b>你指定条件、由通达信筛出来的</b>名单，口径由选股器决定，看板只负责展示。' +
+            '两边名单不同是正常的。</span>' +
+          '<span class="q"><b>三个分档什么意思？</b>' +
+            '刚上穿＝价格贴在 60 周线上方 2% 以内，形态最新鲜；' +
+            '已站上＝高出 2%~10%，需要回踩确认；' +
+            '远离＝高出 10% 以上，属于加速段，追高风险更大。</span>' +
+        '</div>' +
+      '</details>' +
+      '<div class="metrics c2">' +
+        '<div class="metric hero"><div class="k">入选总数</div>' +
+          '<div class="v sm">' + (c.total || 0) +
+            ' <span style="font-size:15px;font-weight:600">只</span></div>' +
+          '<div class="x">数据日 ' + esc(d.day || '—') + ' · ' +
+            esc(src.channel || '通达信') + '</div></div>' +
+        '<div class="metric"><div class="k">刚上穿（≤2%）</div>' +
+          '<div class="v sm">' + fresh + ' 只</div><div class="x">最贴线，形态最新鲜</div></div>' +
+        '<div class="metric"><div class="k">已站上（2%~10%）</div>' +
+          '<div class="v sm">' + hold + ' 只</div><div class="x">等待回踩确认</div></div>' +
+        '<div class="metric"><div class="k">远离（>10%）</div>' +
+          '<div class="v sm">' + far + ' 只</div><div class="x">加速段，追高风险更大</div></div>' +
+      '</div>' +
+      (stale ? '<div class="banner">这份名单的数据日是 ' + esc(d.day) +
+        '，不是今天（' + esc(today) + '）—— 通达信选股结果还没有重新导入。</div>' : '');
+
+    $('tdxNote').innerHTML =
+      '<b>入选条件</b>（通达信筛选口径，看板不改判）：' +
+      '① 本周收盘价 > 60 周均线；② 上周收盘价 ≤ 60 周均线；③ 名称不含 ST/*ST/退市标识。' +
+      '共 ' + (c.total || 0) + ' 只入库' +
+      ((d.rejected || []).length ? '，剔除 ' + d.rejected.length + ' 行（见导入日志）' : '') + '。' +
+      (topInd ? '<br/><b>行业分布（前五）</b>：' + esc(topInd) + '。' : '') +
+      '<br/><b>保留字段</b>：代码 / 名称 / 行业 / 最新价 / 涨跌幅 / 60 周线 / 偏离 / 分档 / 入选条件 / 数据日。' +
+      '<br/><b>数据链路</b>：通达信条件选股（MCP）→ <span class="code">data/tdx/raw/</span> 原始导出留档 → ' +
+      '<span class="code">src/tdx/import_pick.py</span> 转换 → <span class="code">dashboard/tdx_pick.json</span> → 本页。' +
+      '每一行都能点开周线图，图中橙线即 60 周均线。' +
+      '<br/><b>⚠️ 定性</b>：上穿 60 周线只表示长期趋势由弱转强的<b>观察点</b>，' +
+      '不是买入信号；名单不构成投资建议，决策请自行判断。';
+
+    mountSort('tdx', 'tdxSort', TDX_SORTS, renderTdxList);
+    renderTdxList();
+  }
+
   /* ------------------------------------------------ 视图：运行 */
   function renderSystem() {
     const d = S.data;
@@ -1291,6 +1478,8 @@
         // v1.14.0：期货并入策略一（today）页，随本页显示/切换时渲染
         if (b.dataset.tab === 'today') renderFutures();
         if (b.dataset.tab === 'pattern') renderPattern();   // 懒加载：pattern.json 由本机/云端扫描生成
+        // v1.27.0：通达信选股结果独立成板块，懒加载 tdx_pick.json
+        if (b.dataset.tab === 'tdx') renderTdx();
         // v1.26.0：新闻独立成板块，切到该页时重绘（数据在 boot 时已加载，无需再请求）
         if (b.dataset.tab === 'news') renderNews();
         if (b.dataset.tab === 'account' && window.WB_ACCOUNT) window.WB_ACCOUNT.onShow();
@@ -1298,7 +1487,7 @@
     });
   }
 
-  /** 支持 ?tab=today|pattern|news|system|account 直达（也用于分享与自动截图） */
+  /** 支持 ?tab=today|pattern|tdx|news|system|account 直达（也用于分享与自动截图） */
   function applyTabFromUrl() {
     let t = new URL(location.href).searchParams.get('tab');
     if (!t) return;

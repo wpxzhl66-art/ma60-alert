@@ -17,7 +17,7 @@
     </div>
     <span class="pill mute" id="pushPill" style="display:none" title="推送已关闭（config push.enabled=false），扫描与看板照常">推送已停用</span>
     <span class="pill off" id="dayPill"><i class="dot"></i><span>—</span></span>
-    <span class="ver" id="verBadge" title="看板版本">v1.26.1</span>
+    <span class="ver" id="verBadge" title="看板版本">v1.27.0</span>
   </div>
 </header>
 
@@ -146,6 +146,31 @@
     </div>
   </section>
 
+  <!-- ==================== 通达信选股（v1.27.0 · 条件选股结果导入） ==================== -->
+  <section class="tabpane" id="pane-tdx">
+    <div class="section-label">通达信选股 · 条件筛选结果</div>
+    <div class="card" id="tdxHero">
+      <div class="loading"><span class="spinner"></span></div>
+    </div>
+
+    <div class="section-label">入选名单</div>
+    <div class="card">
+      <div class="card-head">
+        <h2>上穿 60 周线的股票</h2>
+        <div class="hint" id="tdxHint">—</div>
+      </div>
+      <div class="plain">
+        这里放的是<b>通达信条件选股</b>的结果，原样导入，不改判。<b>点一下股票名字</b>能看周线图。
+      </div>
+      <div class="sortbar" id="tdxZone"></div>
+      <div class="sortbar" id="tdxSort"></div>
+      <div class="list" id="tdxList">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="note" id="tdxNote"></div>
+    </div>
+  </section>
+
   <!-- ==================== 新闻（独立板块 · 消息面，不参与选股） ==================== -->
   <section class="tabpane" id="pane-news">
     <div class="section-label">新闻 · 消息面参考</div>
@@ -264,6 +289,7 @@
   <div class="inner">
     <button class="on" data-tab="today"><span class="ico">📊</span>策略一</button>
     <button data-tab="pattern"><span class="ico">🔥</span>策略二</button>
+    <button data-tab="tdx"><span class="ico">🎯</span>选股</button>
     <button data-tab="news"><span class="ico">📰</span>新闻</button>
     <button data-tab="system"><span class="ico">⚙️</span>系统</button>
     <button data-tab="account"><span class="ico">👤</span>我的</button>

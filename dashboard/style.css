@@ -483,6 +483,11 @@ body.page-history { padding-bottom: 30px; }
 .lv { font-size: 11px; font-weight: 650; padding: 2px 7px; border-radius: 7px; white-space: nowrap; }
 .lv.hot { background: var(--orange-bg); color: var(--orange); }
 .lv.calm { background: var(--blue-bg); color: var(--blue); }
+/* 通达信选股板块的分档标签（v1.27.0）：fresh/blue · hold/orange · far/red
+   类名与 JSON 的 zone 字段一一对应，探针直接按 .lv.<zone> 断言 */
+.lv.fresh { background: var(--blue-bg); color: var(--blue); }
+.lv.hold { background: var(--orange-bg); color: var(--orange); }
+.lv.far { background: var(--up-bg); color: var(--up); }
 
 /* 窄屏：标题独占一行，状态角标换行到下面，避免「交易助手_自编」被挤成两行 */
 @media (max-width: 640px) {

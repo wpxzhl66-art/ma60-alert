@@ -1,0 +1,625 @@
+{
+ "schema": "tdx_pick.v1",
+ "generated_at": "2026-10-18T18:51:34+08:00",
+ "day": "2026-10-16",
+ "source": {
+  "provider": "通达信",
+  "channel": "MCP tdx-connector / tdx_screener",
+  "query": "当天股价上穿60周均线，排除ST股",
+  "rang": "AG（A 股）",
+  "raw_total": 39
+ },
+ "condition": {
+  "ma_period": 60,
+  "rules": [
+   "本周收盘价 > 60 周均线",
+   "上周收盘价 ≤ 60 周均线",
+   "名称不含 ST / *ST / 退市标识"
+  ],
+  "exclude_st": true,
+  "zones": {
+   "fresh": {
+    "label": "刚上穿",
+    "max_dev_pct": 2.0
+   },
+   "hold": {
+    "label": "已站上",
+    "max_dev_pct": 10.0
+   },
+   "far": {
+    "label": "远离",
+    "max_dev_pct": null
+   }
+  }
+ },
+ "fields": [
+  {
+   "key": "code",
+   "label": "代码",
+   "note": "项目通用格式 sh./sz./bj. + 6 位"
+  },
+  {
+   "key": "name",
+   "label": "名称",
+   "note": "以项目 static.json 名称为准"
+  },
+  {
+   "key": "industry",
+   "label": "行业",
+   "note": "来自 static.json，可能为空"
+  },
+  {
+   "key": "price",
+   "label": "最新价",
+   "note": "元，收盘价"
+  },
+  {
+   "key": "chg",
+   "label": "涨跌幅",
+   "note": "%，当日"
+  },
+  {
+   "key": "ma60w",
+   "label": "60周线",
+   "note": "周线 60 周收盘均价"
+  },
+  {
+   "key": "dev_pct",
+   "label": "偏离",
+   "note": "现价相对 60 周线的百分比"
+  },
+  {
+   "key": "zone",
+   "label": "分档",
+   "note": "fresh ≤2% / hold ≤10% / far >10%"
+  },
+  {
+   "key": "condition",
+   "label": "入选条件",
+   "note": "固定文案，供前端标注"
+  },
+  {
+   "key": "day",
+   "label": "数据日",
+   "note": "该名单对应的交易日"
+  }
+ ],
+ "counts": {
+  "total": 39,
+  "fresh": 17,
+  "hold": 15,
+  "far": 7
+ },
+ "top_industries": [
+  {
+   "name": "传媒",
+   "n": 7
+  },
+  {
+   "name": "医药生物",
+   "n": 6
+  },
+  {
+   "name": "机械设备",
+   "n": 5
+  },
+  {
+   "name": "交通运输",
+   "n": 3
+  },
+  {
+   "name": "房地产",
+   "n": 2
+  }
+ ],
+ "rejected": [],
+ "rows": [
+  {
+   "code": "sz.002457",
+   "tdx_code": "002457",
+   "name": "青龙管业",
+   "industry": "建筑材料",
+   "price": 11.59,
+   "chg": 1.31,
+   "ma60w": 11.58,
+   "dev_pct": 0.09,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.301231",
+   "tdx_code": "301231",
+   "name": "荣信文化",
+   "industry": "传媒",
+   "price": 30.62,
+   "chg": -3.59,
+   "ma60w": 30.56,
+   "dev_pct": 0.2,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000090",
+   "tdx_code": "000090",
+   "name": "天健集团",
+   "industry": "房地产",
+   "price": 3.63,
+   "chg": 6.45,
+   "ma60w": 3.61,
+   "dev_pct": 0.55,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600210",
+   "tdx_code": "600210",
+   "name": "紫江企业",
+   "industry": "轻工制造",
+   "price": 6.74,
+   "chg": 2.74,
+   "ma60w": 6.7,
+   "dev_pct": 0.6,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000975",
+   "tdx_code": "000975",
+   "name": "山金国际",
+   "industry": "有色金属",
+   "price": 24.63,
+   "chg": 3.71,
+   "ma60w": 24.44,
+   "dev_pct": 0.78,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600621",
+   "tdx_code": "600621",
+   "name": "华鑫股份",
+   "industry": "非银金融",
+   "price": 14.76,
+   "chg": -4.28,
+   "ma60w": 14.64,
+   "dev_pct": 0.82,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.688617",
+   "tdx_code": "688617",
+   "name": "惠泰医疗",
+   "industry": "医药生物",
+   "price": 249.3,
+   "chg": -3.6,
+   "ma60w": 247.22,
+   "dev_pct": 0.84,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002264",
+   "tdx_code": "002264",
+   "name": "新 华 都",
+   "industry": "传媒",
+   "price": 7.81,
+   "chg": 3.86,
+   "ma60w": 7.73,
+   "dev_pct": 1.03,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.601766",
+   "tdx_code": "601766",
+   "name": "中国中车",
+   "industry": "机械设备",
+   "price": 6.38,
+   "chg": -0.93,
+   "ma60w": 6.3,
+   "dev_pct": 1.27,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600285",
+   "tdx_code": "600285",
+   "name": "羚锐制药",
+   "industry": "医药生物",
+   "price": 21.06,
+   "chg": -0.8,
+   "ma60w": 20.77,
+   "dev_pct": 1.4,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002076",
+   "tdx_code": "002076",
+   "name": "星光股份",
+   "industry": "家用电器",
+   "price": 2.17,
+   "chg": 10.15,
+   "ma60w": 2.14,
+   "dev_pct": 1.4,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600229",
+   "tdx_code": "600229",
+   "name": "城市传媒",
+   "industry": "传媒",
+   "price": 6.2,
+   "chg": -0.32,
+   "ma60w": 6.1,
+   "dev_pct": 1.64,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002639",
+   "tdx_code": "002639",
+   "name": "雪人集团",
+   "industry": "机械设备",
+   "price": 15.66,
+   "chg": 1.89,
+   "ma60w": 15.4,
+   "dev_pct": 1.69,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.603883",
+   "tdx_code": "603883",
+   "name": "老百姓",
+   "industry": "医药生物",
+   "price": 14.17,
+   "chg": -1.94,
+   "ma60w": 13.93,
+   "dev_pct": 1.72,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.688367",
+   "tdx_code": "688367",
+   "name": "工大高科",
+   "industry": "机械设备",
+   "price": 31.25,
+   "chg": 0.22,
+   "ma60w": 30.72,
+   "dev_pct": 1.73,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.301196",
+   "tdx_code": "301196",
+   "name": "唯科科技",
+   "industry": "基础化工",
+   "price": 81.2,
+   "chg": 0.74,
+   "ma60w": 79.8,
+   "dev_pct": 1.75,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.300787",
+   "tdx_code": "300787",
+   "name": "海能实业",
+   "industry": "电子",
+   "price": 11.63,
+   "chg": 1.39,
+   "ma60w": 11.43,
+   "dev_pct": 1.75,
+   "zone": "fresh",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000538",
+   "tdx_code": "000538",
+   "name": "云南白药",
+   "industry": "医药生物",
+   "price": 53.08,
+   "chg": 0.34,
+   "ma60w": 52.03,
+   "dev_pct": 2.02,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.601098",
+   "tdx_code": "601098",
+   "name": "中南传媒",
+   "industry": "传媒",
+   "price": 11.14,
+   "chg": -0.98,
+   "ma60w": 10.81,
+   "dev_pct": 3.05,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.301130",
+   "tdx_code": "301130",
+   "name": "西点药业",
+   "industry": "医药生物",
+   "price": 30.46,
+   "chg": 5.36,
+   "ma60w": 29.44,
+   "dev_pct": 3.46,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002889",
+   "tdx_code": "002889",
+   "name": "东方嘉盛",
+   "industry": "交通运输",
+   "price": 14.31,
+   "chg": 9.99,
+   "ma60w": 13.82,
+   "dev_pct": 3.55,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000635",
+   "tdx_code": "000635",
+   "name": "英 力 特",
+   "industry": "基础化工",
+   "price": 8.49,
+   "chg": 4.3,
+   "ma60w": 8.18,
+   "dev_pct": 3.79,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.601816",
+   "tdx_code": "601816",
+   "name": "京沪高铁",
+   "industry": "交通运输",
+   "price": 5.13,
+   "chg": 0.79,
+   "ma60w": 4.92,
+   "dev_pct": 4.27,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002949",
+   "tdx_code": "002949",
+   "name": "华阳国际",
+   "industry": "建筑装饰",
+   "price": 14.14,
+   "chg": 10.04,
+   "ma60w": 13.48,
+   "dev_pct": 4.9,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002727",
+   "tdx_code": "002727",
+   "name": "一心堂",
+   "industry": "医药生物",
+   "price": 12.98,
+   "chg": 1.49,
+   "ma60w": 12.3,
+   "dev_pct": 5.53,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.605189",
+   "tdx_code": "605189",
+   "name": "富春染织",
+   "industry": "纺织服饰",
+   "price": 16.31,
+   "chg": -8.63,
+   "ma60w": 15.44,
+   "dev_pct": 5.63,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "bj.920873",
+   "tdx_code": "920873",
+   "name": "中设咨询",
+   "industry": "",
+   "price": 8.28,
+   "chg": 4.41,
+   "ma60w": 7.75,
+   "dev_pct": 6.84,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000573",
+   "tdx_code": "000573",
+   "name": "粤宏远Ａ",
+   "industry": "房地产",
+   "price": 4.47,
+   "chg": 10.1,
+   "ma60w": 4.13,
+   "dev_pct": 8.23,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.603329",
+   "tdx_code": "603329",
+   "name": "上海雅仕",
+   "industry": "交通运输",
+   "price": 11.72,
+   "chg": 3.44,
+   "ma60w": 10.82,
+   "dev_pct": 8.32,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.603105",
+   "tdx_code": "603105",
+   "name": "芯能科技",
+   "industry": "公用事业",
+   "price": 9.8,
+   "chg": 6.18,
+   "ma60w": 9.03,
+   "dev_pct": 8.53,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600562",
+   "tdx_code": "600562",
+   "name": "国睿科技",
+   "industry": "国防军工",
+   "price": 29.34,
+   "chg": 2.27,
+   "ma60w": 27.01,
+   "dev_pct": 8.63,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.600316",
+   "tdx_code": "600316",
+   "name": "洪都航空",
+   "industry": "国防军工",
+   "price": 37.66,
+   "chg": 7.29,
+   "ma60w": 34.33,
+   "dev_pct": 9.7,
+   "zone": "hold",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sh.601595",
+   "tdx_code": "601595",
+   "name": "上海电影",
+   "industry": "传媒",
+   "price": 27.65,
+   "chg": -3.32,
+   "ma60w": 25.13,
+   "dev_pct": 10.03,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000995",
+   "tdx_code": "000995",
+   "name": "皇台酒业",
+   "industry": "食品饮料",
+   "price": 14.28,
+   "chg": 6.81,
+   "ma60w": 12.94,
+   "dev_pct": 10.36,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.300989",
+   "tdx_code": "300989",
+   "name": "蕾奥规划",
+   "industry": "建筑装饰",
+   "price": 17.17,
+   "chg": 3.12,
+   "ma60w": 15.55,
+   "dev_pct": 10.42,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000607",
+   "tdx_code": "000607",
+   "name": "华媒控股",
+   "industry": "传媒",
+   "price": 4.61,
+   "chg": 10.02,
+   "ma60w": 4.12,
+   "dev_pct": 11.89,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.301311",
+   "tdx_code": "301311",
+   "name": "昆船智能",
+   "industry": "机械设备",
+   "price": 20.3,
+   "chg": 2.53,
+   "ma60w": 17.29,
+   "dev_pct": 17.41,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.000530",
+   "tdx_code": "000530",
+   "name": "冰山冷热",
+   "industry": "机械设备",
+   "price": 7.62,
+   "chg": 9.96,
+   "ma60w": 6.1,
+   "dev_pct": 24.92,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  },
+  {
+   "code": "sz.002343",
+   "tdx_code": "002343",
+   "name": "慈文传媒",
+   "industry": "传媒",
+   "price": 9.33,
+   "chg": 4.71,
+   "ma60w": 6.63,
+   "dev_pct": 40.72,
+   "zone": "far",
+   "condition": "上穿60周线",
+   "day": "2026-10-16"
+  }
+ ]
+}
