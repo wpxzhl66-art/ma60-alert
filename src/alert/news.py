@@ -566,33 +566,51 @@ def build_section(cfg: dict | None = None) -> tuple[str, int]:
 
 
 # ---------------------------------------------------------------- 出口三：非交易日汇总
-def build_summary(cfg: dict | None = None) -> tuple[str, int]:
+def item_key(n) -> str:
+    """条目去重键：优先原文链接，其次标题。用于非交易日多轮增量推送。"""
+    return ((getattr(n, "url", "") or getattr(n, "title", "")) or "")[:200].strip()
+
+
+def build_summary(cfg: dict | None = None, exclude: set[str] | None = None,
+                  label: str = "", out_keys: list[str] | None = None) -> tuple[str, int]:
     """非交易日财经要闻汇总：可独立推送的 Markdown 栏目。
 
     与 ``build_section`` 的区别：放宽时间窗到 48h（覆盖周末两天）、
     展示每条重要度评分、并附评分口径说明；供 ``--news`` 模式单独推送。
+
+    ``exclude`` 为当日已推送条目的键集合（``item_key``），用于多轮增量推送；
+    ``label`` 为轮次标签（如「第 2 轮 10:15」），显示在标题里；
+    ``out_keys`` 若给出，会追加本轮实际包含条目的键（供调用方记账）。
     """
     cfg = cfg or _cfg()
     eff = dict(cfg)
     eff["window_hours"] = float(cfg.get("off_day_window_hours", 48))
     eff["max_items"] = int(cfg.get("off_day_max_items", 10))
     items, status = select(eff)
+    if exclude:
+        items = [n for n in items if item_key(n) not in exclude]
     failed = [k for k, v in status.items() if not v.get("ok")]
     now = datetime.now()
     wk = "一二三四五六日"[now.weekday()]
     thr = float(cfg.get("important_threshold", 18))
-    lines = [f"## 📌 财经要闻汇总（非交易日 · {now:%m-%d} 周{wk}）", "",
+    head = f"## 📌 财经要闻汇总（非交易日 · {now:%m-%d} 周{wk}"
+    head += f" · {label}）" if label else "）"
+    lines = [head, "",
              f"> 重要度 = 来源权重 ×（基础分 + 市场影响 + 传播热度）× 时效因子；"
              f"仅列评分 ≥ {thr:.0f} 或源侧标记为重要的条目。", ""]
     if not items:
-        lines.append("本期未抓到可推送的财经新闻"
+        lines.append(("本轮无新增财经新闻（当日已推条目不再重复）" if exclude
+                      else "本期未抓到可推送的财经新闻")
                      + (f"（{'、'.join(failed)}暂不可用）" if failed else "") + "。")
         return "\n".join(lines).strip(), 0
     lines += _render_items(items, show_score=True)
+    if out_keys is not None:
+        out_keys.extend(item_key(n) for n in items)
     if failed:
         lines.append("> ⚠️ " + "、".join(failed) + "本次抓取失败，以上为其余来源。")
     src_line = " · ".join(f"{k} {v.get('count', 0)}" for k, v in status.items())
-    lines.append(f"\n—— 本期共 {len(items)} 条重要新闻 ｜ 来源：{src_line} ——")
+    scope = "本轮新增" if exclude else "本期共"
+    lines.append(f"\n—— {scope} {len(items)} 条重要新闻 ｜ 来源：{src_line} ——")
     return "\n".join(lines).strip(), len(items)
 
 

@@ -69,10 +69,12 @@ news:
   push_alone: false          # 仅当有新闻、而 A股/期货/形态都无内容时，
                              # 是否单独推一条（true 时**只在收盘确认轮**生效，
                              # 避免盘中 4 个扫描槽把每日 5 条额度占满）
-  # —— 非交易日财经要闻汇总（--news 模式）——
-  off_day_push: true         # 非交易日是否把要闻汇总单独推送（仍受 push.enabled 与每日额度约束）
+  # —— 非交易日财经要闻（--news 模式，多轮推送）——
+  off_day_push: true         # 非交易日是否把要闻单独推送（仍受 push.enabled 与每日额度约束）
+  off_day_rounds: ["09:35", "10:15", "13:30", "14:20", "15:10"]   # 非交易日推送轮次
+  off_day_incremental: true  # true = 每轮只推当日新增条目；无新增则本轮不推（不占额度）
   off_day_window_hours: 48   # 非交易日放宽时间窗（覆盖周末两天）
-  off_day_max_items: 10      # 非交易日汇总输出条数
+  off_day_max_items: 10      # 非交易日每轮汇总输出条数
   # —— 可量化「重要度」评分模型（见 src/alert/news.py: score_news）——
   # 最终分 S = 来源权重 W ×（基础分 BASE + 市场影响 S_imp + 传播热度 S_heat）× 时效因子 R
   base_score: 14             # 基础分：通过源初筛即有的底分

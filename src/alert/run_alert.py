@@ -25,7 +25,7 @@ import argparse
 import json
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import pusher, quoter, scanner, template
@@ -545,13 +545,37 @@ def run_notify(sha: str):
         print(f"[notify] 已推送：{title}")
 
 
-def run_news_summary(cloud: bool = False, push: bool = True) -> int:
-    """非交易日财经要闻汇总：刷新看板 news.json，并按配置单独推送一次。
+NEWS_GRACE_MIN = 5   # 非交易日要闻轮次：允许提前 5 分钟进入下一轮（吸收时钟抖动）
 
-    与交易日的「把新闻附在预警后面」不同，非交易日没有股票触发，
-    于是把新闻**单独成条**推送。一天至多推送一次：用
-    ``store/state/news_marks.json`` 做每日幂等（与扫描槽位同纪律），
-    重复触发（GitHub cron 抖动 / 外接定时服务补触发）不会重复占用推送额度。
+
+def _hm_to_min(hm: str) -> int:
+    h, m = str(hm).split(":")
+    return int(h) * 60 + int(m)
+
+
+def pick_news_round(rounds: list[str], now: datetime, done: set[str]) -> str:
+    """选出当前可执行的要闻轮次：最晚一个「已到点且未执行」的轮次。
+
+    规则：
+      1) 只允许进入「已到点（含 5 分钟提前）」的轮次，不提前跑未来轮次；
+      2) 已执行的轮次跳过；
+      3) 日历日全部轮次执行完返回空串（当天不再推送）。
+    """
+    now_m = now.hour * 60 + now.minute
+    cand = [r for r in rounds
+            if _hm_to_min(r) - NEWS_GRACE_MIN <= now_m and r not in done]
+    return cand[-1] if cand else ""
+
+
+def run_news_summary(cloud: bool = False, push: bool = True) -> int:
+    """非交易日财经要闻：多轮推送，每轮只推当日新增条目。
+
+    轮次取 ``news.off_day_rounds``（默认与交易日同槽位
+    09:35 / 10:15 / 13:30 / 14:20 / 15:10）。状态存
+    ``store/state/news_marks.json``：
+    ``{"2026-10-19": {"rounds": ["09:35"], "keys": ["<url|title>", ...]}}``
+    旧格式（值为 "HH:MM" 字符串）视为「当日已汇总」，直接跳过。
+    重复触发（GitHub cron 抖动、外接定时服务补触发）不会重复占用额度。
     """
     from . import news
     cfg = news._cfg()
@@ -559,29 +583,52 @@ def run_news_summary(cloud: bool = False, push: bool = True) -> int:
     today = date.today().isoformat()
     try:
         marks = json.loads(mark.read_text(encoding="utf-8")) if mark.exists() else {}
+        marks = marks if isinstance(marks, dict) else {}
     except (OSError, ValueError):
         marks = {}
-    if marks.get(today):
-        print(f"[news-summary] 今日（{today}）已汇总过，跳过（幂等）")
+    state = marks.get(today)
+    if isinstance(state, str):
+        print(f"[news-summary] 今日（{today}）已汇总过（旧格式标记 {state}），跳过")
+        return 0
+    state = state if isinstance(state, dict) else {}
+    done = [str(r) for r in (state.get("rounds") or [])]
+    keys = [str(k) for k in (state.get("keys") or [])]
+    rounds = [str(r) for r in (cfg.get("off_day_rounds") or ["09:35"])]
+    rnd = pick_news_round(rounds, datetime.now(), set(done))
+    if not rnd:
+        print(f"[news-summary] 无待执行轮次（今日已完成 {len(done)}/{len(rounds)} 轮："
+              f"{'、'.join(done) or '无'}），跳过")
         return 0
     # 1) 刷新看板 news.json（放宽到 48h，覆盖周末两天）
     eff = dict(cfg)
     eff["window_hours"] = float(cfg.get("off_day_window_hours", 48))
     news.build_dashboard(eff)
-    # 2) 生成独立汇总栏目
-    text, n = news.build_summary()
+    # 2) 生成增量汇总栏目：只含当日未推送过的条目
+    seen = set(keys) if bool(cfg.get("off_day_incremental", True)) else set()
+    pushed: list[str] = []
+    label = f"第 {len(done) + 1} 轮 {rnd}"
+    text, n = news.build_summary(cfg, exclude=seen, label=label, out_keys=pushed)
     # 3) 推送（受 push.enabled 与每日额度约束；pusher 内部已处理 dry-run / 额度）
+    sent = False
     if push and bool(cfg.get("off_day_push", True)) and n:
-        title = f"【财经要闻汇总】{n} 条"
-        ok = pusher.send(title, text)
-        print(f"[news-summary] 推送{'成功' if ok else '未发送（额度/开关）'}：{title}")
+        title = f"【财经要闻】{rnd} · 新增 {n} 条"
+        sent = pusher.send(title, text)
+        print(f"[news-summary] 轮次 {rnd} 推送{'成功' if sent else '未发送（额度/开关）'}："
+              f"新增 {n} 条")
     else:
-        print(f"[news-summary] 生成 {n} 条（未推送：push={push} "
+        print(f"[news-summary] 轮次 {rnd} 生成 {n} 条（未推送：push={push} "
               f"off_day_push={cfg.get('off_day_push')} n={n}）")
-    # 4) 打标（成功后），交由 git 提交
+    # 4) 打标：轮次必打（同一轮不重试）；条目仅在真正推送后计入已推
+    done = sorted(set(done) | {rnd})
+    if sent:
+        keys = sorted(set(keys) | set(pushed))
+    new_marks: dict = {today: {"rounds": done, "keys": keys}}
+    cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+    for d, v in marks.items():
+        if d != today and str(d) >= cutoff:
+            new_marks[d] = v
     mark.parent.mkdir(parents=True, exist_ok=True)
-    marks[today] = datetime.now().strftime("%H:%M")
-    mark.write_text(json.dumps(marks, ensure_ascii=False, indent=1, sort_keys=True),
+    mark.write_text(json.dumps(new_marks, ensure_ascii=False, indent=1, sort_keys=True),
                     encoding="utf-8")
     return n
 

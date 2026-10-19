@@ -120,11 +120,12 @@ def _emit(out: dict) -> None:
 def decide() -> None:
     now = _now()
     now_m = now.hour * 60 + now.minute
-    # 周末不安排扫描槽位：直接跳过。非交易日（含周末/节假日）的财经要闻汇总
-    # 由 news 任务 + 交易日校验（skip=true）+ news_marks 幂等共同处理，与扫描互不干扰。
+    # 周末不安排扫描：交给后续「交易日校验」置 skip=true → 非交易日要闻轮。
+    # 这里必须输出 run=na（不是 false）：false 会让整个 job 在交易日校验前终止，
+    # 非交易日要闻步骤就永远跑不到（2026-10-19 修正）。
     if now.weekday() >= 5:
-        _emit({"run": "false", "slot": "", "mode": ""})
-        print("[gate] 周末，无扫描槽位，跳过", file=sys.stderr)
+        _emit({"run": "na", "slot": "", "mode": ""})
+        print("[gate] 周末：无扫描槽位，交由交易日校验转非交易日要闻轮", file=sys.stderr)
         return
     slot, delay, late = _decide_slot()
     # 模式按**实际执行时间**定，而不是按槽位名 —— 延迟到收盘后执行就该算收盘确认，

@@ -2,18 +2,20 @@ name: 60周线预警
 
 on:
   schedule:
-    # 交易时段冗余触发（2026-10-19 槽位改版）：
+    # 交易时段冗余触发（2026-10-19 槽位改版 v2）：
     # 目标槽位 09:35 / 10:15 / 13:30 / 14:20 / 15:10（北京时间），
     # 每个槽位放「准点 + 后 10/20 分钟」共 3 个触发点，准点零延迟命中，
     # 事件被丢弃时仍有 2 个后续候补点兜底（slot_gate 窗口 30 分钟收敛）。
     # GitHub 会延迟数小时甚至丢弃 schedule 事件；未命中点立即退出（约 10 秒）。
-    - cron: "35,45,55 1 * * 1-5"     # 北京 09:35（+09:45 / 09:55）
-    - cron: "15,25,35 2 * * 1-5"     # 北京 10:15（+10:25 / 10:35）
-    - cron: "30,40,50 5 * * 1-5"     # 北京 13:30（+13:40 / 13:50）
-    - cron: "20,30,40 6 * * 1-5"     # 北京 14:20（+14:30 / 14:40）
-    - cron: "10,20,30 7 * * 1-5"     # 北京 15:10 收盘确认（+15:20 / 15:30）
+    # 网格同时覆盖周末（* * *）：周末这些点由 TASK=news 轮处理（非交易日多轮要闻）。
+    - cron: "35,45,55 1 * * *"     # 北京 09:35（+09:45 / 09:55）
+    - cron: "15,25,35 2 * * *"     # 北京 10:15（+10:25 / 10:35）
+    - cron: "30,40,50 5 * * *"     # 北京 13:30（+13:40 / 13:50）
+    - cron: "20,30,40 6 * * *"     # 北京 14:20（+14:30 / 14:40）
+    - cron: "10,20,30 7 * * *"     # 北京 15:10 收盘确认（+15:20 / 15:30）
     - cron: "7 8 * * 1-5"     # 北京 16:07 数据更新（避开整点负载高峰）
-    - cron: "35,45,55 1 * * 6,0"     # 北京 09:35 周六/日：非交易日财经要闻汇总（+2 候补，news_marks 幂等）
+  # 缩进必须与 schedule 同级（2 空格）：缩进到 schedule 列表项内部会让
+  # GitHub 只认 schedule，workflow_dispatch 触发器消失（2026-10-17 引入，10-19 修复）。
   workflow_dispatch:
     inputs:
       task:
@@ -58,8 +60,9 @@ jobs:
           TASK="${{ github.event.inputs.task }}"
           if [ -z "$TASK" ]; then
             SCH="${{ github.event.schedule }}"
+            DOW=$(TZ=Asia/Shanghai date +%u)   # 1=周一 … 7=周日
             if [ "$SCH" = "7 8 * * 1-5" ]; then TASK=update
-            elif [ "$SCH" = "35,45,55 1 * * 6,0" ]; then TASK=news
+            elif [ "$DOW" -ge 6 ]; then TASK=news   # 周末：非交易日多轮要闻
             else TASK=scan; fi
           fi
           python3 .github/scripts/slot_gate.py --task "$TASK"
@@ -202,11 +205,13 @@ jobs:
           git diff --cached --quiet || git commit -m "store+dashboard $(TZ=Asia/Shanghai date +%F)"
           bash .github/scripts/push.sh
 
-      # ---------------- 非交易日财经要闻汇总 ----------------
-      - name: 非交易日财经要闻汇总
+      # ---------------- 非交易日财经要闻（多轮） ----------------
+      - name: 非交易日财经要闻（多轮）
         id: offnews
-        # 仅在非交易日（周末 / 节假日，由「交易日校验」置 skip=true）运行；
-        # 内部用 store/state/news_marks.json 保证一天至多推送一次。
+        # 仅在非交易日（周末 / 节假日，由「交易日校验」置 skip=true）运行。
+        # 周末与节假日共用五槽位 cron 网格；轮次与「当日已推条目」由
+        # store/state/news_marks.json 记录，重复触发不重复占用额度，
+        # 每轮只推新增条目（无新增则本轮不推）。
         if: steps.day.outputs.skip == 'true'
         run: |
           cd src
