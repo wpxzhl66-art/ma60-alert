@@ -14,15 +14,15 @@ on:
     - cron: "10,20,30 7 * * 1-5"     # 北京 15:10 收盘确认（+15:20 / 15:30）
     - cron: "7 8 * * 1-5"     # 北京 16:07 数据更新（避开整点负载高峰）
     - cron: "35,45,55 1 * * 6,0"     # 北京 09:35 周六/日：非交易日财经要闻汇总（+2 候补，news_marks 幂等）
-      workflow_dispatch:
-        inputs:
-          task:
-            description: "任务：scan | confirm | update | news | demo"
-            default: "demo"
-          force:
-            description: "跳过槽位闸门（手动补跑用；外部定时服务不要设）"
-            type: boolean
-            default: false
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "任务：scan | confirm | update | news | demo"
+        default: "demo"
+      force:
+        description: "跳过槽位闸门（手动补跑用；外部定时服务不要设）"
+        type: boolean
+        default: false
 
 concurrency:
   group: ma60-alert
