@@ -104,14 +104,50 @@ def _calc_one(args):
     return row
 
 
+def _resolve_universe(base: Path | None = None) -> tuple[list[tuple[str, str, str]], str]:
+    """返回 ([(code, name, industry)], 数据源说明)。
+
+    ``data/`` 不入库（见 .gitignore），云端 runner 必然没有它。
+    因此按「本地 data/ 优先，云端退到 store/ 活数据」解析：
+      - 在市清单：data/universe.csv.gz（含 type/status）→ store/universe_live.csv.gz
+      - 行业：data/industry.csv.gz → store/industry_sw.csv.gz
+    """
+    root = base or ROOT
+    uni_path = root / "data" / "universe.csv.gz"
+    if uni_path.exists():
+        uni = pd.read_csv(uni_path, dtype=str)
+        uni = uni[(uni["type"] == "1") & (uni["status"] == "1")]
+        src = "data/universe.csv.gz"
+    else:
+        uni_path = root / "store" / "universe_live.csv.gz"
+        uni = pd.read_csv(uni_path, dtype=str)
+        src = "store/universe_live.csv.gz"
+    ind_path = root / "data" / "industry.csv.gz"
+    if not ind_path.exists():
+        ind_path = root / "store" / "industry_sw.csv.gz"
+    ind_map: dict[str, str] = {}
+    try:
+        ind_df = pd.read_csv(ind_path, dtype=str)
+        col = "industry" if "industry" in ind_df.columns else ind_df.columns[1]
+        ind_map = dict(zip(ind_df["code"], ind_df[col].fillna("")))
+        src += f" + {ind_path.name}"
+    except Exception as exc:  # noqa: BLE001
+        print(f"      screener 行业文件不可用（{type(exc).__name__}），行业留空")
+    jobs = [(r.code, getattr(r, "code_name", "") or "", ind_map.get(r.code, ""))
+            for r in uni.itertuples()]
+    return jobs, src
+
+
 def build_screener() -> dict:
     t0 = time.time()
-    uni = pd.read_csv(ROOT / "data" / "universe.csv.gz", dtype=str)
-    uni = uni[(uni["type"] == "1") & (uni["status"] == "1")]
-    ind_df = pd.read_csv(ROOT / "data" / "industry.csv.gz", dtype=str)
-    ind_map = dict(zip(ind_df["code"], ind_df["industry"].fillna("")))
-    jobs = [(r.code, r.code_name, ind_map.get(r.code, ""))
-            for r in uni.itertuples()]
+    # 云端没有 data/daily 日线库时**不能**写盘：否则会用空表覆盖已有的
+    # 有效 screener.json（线上选股面板会被清空）。
+    if not DATA.exists():
+        keep = OUT.exists()
+        print("      screener 跳过：无 data/daily 日线库（云端不入库）"
+              + ("，保留现有 screener.json 不覆盖" if keep else ""))
+        return {}
+    jobs, uni_src = _resolve_universe()
 
     rows = []
     with Pool(16) as pool:
@@ -133,6 +169,9 @@ def build_screener() -> dict:
         priced.append(r)
 
     priced.sort(key=lambda r: r["c"])
+    if not priced:
+        print("      screener 跳过：本次一只都没算出来，保留现有 screener.json 不覆盖")
+        return {}
     out = {
         "schema": "screener.v1",
         "day": qj.get("date", ""),
@@ -145,7 +184,7 @@ def build_screener() -> dict:
     text = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
     OUT.write_text(text, encoding="utf-8")
     print(f"[screener] {len(priced)}/{len(jobs)} 只 -> screener.json "
-          f"({len(text.encode())/1024:.0f} KB, {time.time()-t0:.0f}s)")
+          f"({len(text.encode())/1024:.0f} KB, {time.time()-t0:.0f}s, 源 {uni_src})")
     return out
 
 

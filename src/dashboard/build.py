@@ -631,11 +631,15 @@ def main() -> None:
     if a.all or a.daily or a.weekly or a.futures:
         build_futures()
     # 选股快照（v1.28.0）：并入 --daily，16:07 更新轮每天刷新。
-    # 必须在 build_quotes 之后（现价取 quotes.json）。云端无 data/daily 时
-    # _calc_one 全部返回 None，产物为空表，不会误报崩溃。
+    # 必须在 build_quotes 之后（现价取 quotes.json）。
+    # 非致命：任何异常只打印并继续——否则云端构建失败会连带跳过
+    # 「提交图表与看板数据」和「推送」两步，整轮预警发不出去（2026-10-19 教训）。
     if a.all or a.daily or a.screener:
-        from dashboard.screener import build_screener
-        build_screener()
+        try:
+            from dashboard.screener import build_screener
+            build_screener()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[screener] 构建失败，跳过（不影响推送）：{type(exc).__name__} {exc}")
     # 形态数据由形态扫描专属产出（本机 pattern.scan / 云端 pattern.store_scan），
     # 不与 --daily 联动：数据更新轮不跑形态扫描，latest.json 还停在上一次扫描，
     # 重建只会无谓地触碰 dashboard/pattern.json（两道防回退保护能兜住，但没必要）。
