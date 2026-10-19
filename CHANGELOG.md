@@ -7,6 +7,47 @@
 
 ---
 
+## [修复 2026-10-19] — 推送全天中断排查 + 非交易日改多轮要闻
+
+**故障现象**：10-19（周一，交易日）09:35 / 10:15 两个槽位均未收到微信推送。
+
+**三个叠加根因**（都不是「规则写错」，都是执行链路断了）：
+
+1. **GitHub schedule 未投递**：10-18 20:00 之后 14 小时内 `total_count=0`，
+   整个 workflow 一次都没启动（GitHub cron 延迟 8~9 小时/丢事件的既有问题）。
+2. **`workflow_dispatch` 触发器失效**（1b93fe0 引入）：`workflow_dispatch:` 被缩进到
+   `schedule` 列表项内部（6 空格），GitHub 只注册了 `schedule`。实测
+   `gh workflow run` 返回 `HTTP 422: Workflow does not have 'workflow_dispatch' trigger`
+   —— 故障当天连手动补跑都做不到。
+3. **云端看板构建崩溃**（v1.28.0 引入，真正让推送断掉的一环）：
+   `dashboard/screener.py` 硬读 `data/universe.csv.gz`，而 `data/` 在 .gitignore 里、
+   云端 runner 必然没有 → `python -m dashboard.build --daily` 抛
+   `FileNotFoundError` → 后续「提交图表与看板数据」「推送」两步因 `success()` 前置
+   条件不成立被跳过 → **扫描成功但消息永远发不出去**。
+
+**修复**：
+
+- `alert.yml`：`workflow_dispatch` 恢复 2 空格缩进，并加注释防止再次缩进；
+  五个槽位 cron 改为覆盖全周（`* * *`），周末由 `TASK=news` 轮处理（按 DOW 判定）。
+- `slot_gate.py`：周末输出 `run=na`（原 `run=false` 会在交易日校验前终止 job，
+  非交易日要闻步骤永远跑不到）。
+- `screener.py`：新增 `_resolve_universe()`——`data/` 缺失时降级到
+  `store/universe_live.csv.gz` + `store/industry_sw.csv.gz`；无 `data/daily` 或
+  一只都没算出时**跳过写盘**，不覆盖已有有效 `screener.json`（避免线上选股面板被清空）。
+- `build.py`：`build_screener()` 包 `try/except`，任何异常只打印不中断，
+  保证「看板提交 + 推送」不被下游模块拖死。
+- **非交易日改为多轮要闻**：轮次 = 09:35 / 10:15 / 13:30 / 14:20 / 15:10
+  （`news.off_day_rounds`），每轮只推当日**新增**条目（`off_day_incremental`），
+  无新增则该轮不推、不占额度；`news_marks.json` 结构升级为
+  `{日期: {rounds:[], keys:[]}}`（兼容旧字符串格式）；标题形如
+  `【财经要闻】10:15 · 新增 3 条`。
+
+**验证**：单测 17 项（轮次选择 9 + 流程级 8：重复触发不重推、无新增不推、推送失败不记账）；
+手动补跑 run 39192191275 → `[notify] 已推送：【60周线上穿·掉队风险·盘中预警】43 只`，
+`screener 跳过：无 data/daily 日线库…保留现有 screener.json 不覆盖`。
+
+---
+
 ## [调度改版 2026-10-19] — 推送槽位改为 09:35 / 10:15 / 13:30 / 14:20 / 15:10，非交易日推要闻
 
 - **槽位**：盘中扫描 09:35 / 10:15 / 13:30 / 14:20，收盘确认 **15:10**（原
