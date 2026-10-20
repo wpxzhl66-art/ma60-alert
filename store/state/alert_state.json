@@ -60,10 +60,10 @@
   "last_push_ts": "2026-10-14T15:56:24"
  },
  "sh.600777": {
-  "last_push_date": "2026-10-14",
-  "last_push_week": "2026-W42",
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-14T15:56:24"
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sh.600872": {
   "last_push_date": "2026-10-19",
@@ -150,10 +150,10 @@
   "last_push_ts": "2026-10-14T15:56:24"
  },
  "sh.688350": {
-  "last_push_date": "2026-10-14",
-  "last_push_week": "2026-W42",
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-14T15:56:24"
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sh.688507": {
   "last_push_date": "2026-10-19",
@@ -288,10 +288,10 @@
   "last_push_ts": "2026-10-14T15:56:24"
  },
  "sh.600229": {
-  "last_push_date": "2026-10-15",
-  "last_push_week": "2026-W42",
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-15T13:38:49"
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sh.600818": {
   "last_push_date": "2026-10-15",
@@ -378,10 +378,10 @@
   "last_push_ts": "2026-10-15T13:38:49"
  },
  "sz.301356": {
-  "last_push_date": "2026-10-15",
-  "last_push_week": "2026-W42",
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-15T13:38:49"
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sz.002945": {
   "last_push_date": "2026-10-15",
@@ -492,10 +492,10 @@
   "last_push_ts": "2026-10-16T23:21:45"
  },
  "sh.688370": {
-  "last_push_date": "2026-10-16",
-  "last_push_week": "2026-W42",
-  "last_push_mode": "confirm",
-  "last_push_ts": "2026-10-16T23:21:45"
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sh.688766": {
   "last_push_date": "2026-10-19",
@@ -564,10 +564,10 @@
   "last_push_ts": "2026-10-19T15:56:28"
  },
  "sz.002076": {
-  "last_push_date": "2026-10-16",
-  "last_push_week": "2026-W42",
-  "last_push_mode": "confirm",
-  "last_push_ts": "2026-10-16T23:21:45"
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sz.002129": {
   "last_push_date": "2026-10-16",
@@ -648,10 +648,10 @@
   "last_push_ts": "2026-10-19T10:56:45"
  },
  "sz.300943": {
-  "last_push_date": "2026-10-16",
-  "last_push_week": "2026-W42",
-  "last_push_mode": "confirm",
-  "last_push_ts": "2026-10-16T23:21:45"
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
  },
  "sz.300966": {
   "last_push_date": "2026-10-16",
@@ -940,5 +940,317 @@
   "last_push_week": "2026-W43",
   "last_push_mode": "confirm",
   "last_push_ts": "2026-10-19T15:56:28"
+ },
+ "sh.600148": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.600178": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.600345": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.600539": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.600661": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603051": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603068": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603073": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603270": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603278": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603458": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603598": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603657": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603738": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603755": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603893": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.603989": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.605186": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688011": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688023": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688030": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688071": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688099": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688114": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688170": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688689": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sh.688699": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.000620": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.001288": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.001389": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.002421": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.002803": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.002925": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300018": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300151": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300191": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300244": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300283": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300363": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300440": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300488": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300639": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300687": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300733": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300802": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300806": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.300825": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.301071": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.301157": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.301248": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.301500": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
+ },
+ "sz.301608": {
+  "last_push_date": "2026-10-20",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-20T14:32:39"
  }
 }
