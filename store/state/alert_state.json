@@ -1630,5 +1630,23 @@
   "last_push_week": "2026-W43",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-10-22T10:16:48"
+ },
+ "sh.600233": {
+  "last_push_date": "2026-10-22",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-22T13:32:10"
+ },
+ "sh.601166": {
+  "last_push_date": "2026-10-22",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-22T13:32:10"
+ },
+ "sz.002043": {
+  "last_push_date": "2026-10-22",
+  "last_push_week": "2026-W43",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-22T13:32:10"
  }
 }
