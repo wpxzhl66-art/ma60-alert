@@ -630,10 +630,10 @@
   "last_push_ts": "2026-10-21T09:37:20"
  },
  "sz.300689": {
-  "last_push_date": "2026-10-21",
-  "last_push_week": "2026-W43",
+  "last_push_date": "2026-10-28",
+  "last_push_week": "2026-W44",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-21T14:22:12"
+  "last_push_ts": "2026-10-28T14:23:52"
  },
  "sz.300761": {
   "last_push_date": "2026-10-19",
@@ -3070,5 +3070,17 @@
   "last_push_week": "2026-W44",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-10-28T13:32:38"
+ },
+ "sh.600281": {
+  "last_push_date": "2026-10-28",
+  "last_push_week": "2026-W44",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-28T14:23:52"
+ },
+ "sz.000755": {
+  "last_push_date": "2026-10-28",
+  "last_push_week": "2026-W44",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-28T14:23:52"
  }
 }
