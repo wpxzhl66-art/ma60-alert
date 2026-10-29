@@ -90,10 +90,10 @@
   "last_push_ts": "2026-10-27T09:37:08"
  },
  "sh.601566": {
-  "last_push_date": "2026-10-14",
-  "last_push_week": "2026-W42",
+  "last_push_date": "2026-10-29",
+  "last_push_week": "2026-W44",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-14T15:56:24"
+  "last_push_ts": "2026-10-29T14:22:02"
  },
  "sh.601949": {
   "last_push_date": "2026-10-14",
@@ -3220,5 +3220,11 @@
   "last_push_week": "2026-W44",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-10-29T13:32:07"
+ },
+ "sz.300498": {
+  "last_push_date": "2026-10-29",
+  "last_push_week": "2026-W44",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-10-29T14:22:02"
  }
 }
