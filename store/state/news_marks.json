@@ -64,5 +64,22 @@
    "14:20",
    "15:10"
   ]
+ },
+ "2026-10-31": {
+  "keys": [
+   "https://finance.sina.com.cn/china/2026-10-31/doc-inixakvc7712179.shtml",
+   "https://finance.sina.com.cn/jjxw/2026-10-31/doc-inixakva1843367.shtml",
+   "https://finance.sina.com.cn/roll/2026-10-31/doc-inixakuy5011186.shtml",
+   "https://finance.sina.com.cn/stock/usstock/c/2026-10-31/doc-inixakuy5042231.shtml",
+   "https://finance.sina.com.cn/world/gjcj/2026-10-31/doc-inixakvf4120683.shtml",
+   "https://www.jin10.com/flash/20261031090513130800",
+   "https://www.jin10.com/flash/20261031092000001800",
+   "https://www.jin10.com/flash/20261031093016148800",
+   "https://www.jin10.com/flash/20261031093121366800",
+   "https://www.jin10.com/flash/20261031093359614800"
+  ],
+  "rounds": [
+   "09:35"
+  ]
  }
 }
