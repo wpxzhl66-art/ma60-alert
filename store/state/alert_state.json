@@ -90,10 +90,10 @@
   "last_push_ts": "2026-11-02T13:32:35"
  },
  "sh.601566": {
-  "last_push_date": "2026-10-29",
-  "last_push_week": "2026-W44",
-  "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-29T14:22:02"
+  "last_push_date": "2026-11-02",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "confirm",
+  "last_push_ts": "2026-11-02T15:13:32"
  },
  "sh.601949": {
   "last_push_date": "2026-10-14",
@@ -2148,10 +2148,10 @@
   "last_push_ts": "2026-10-23T14:22:37"
  },
  "sz.301589": {
-  "last_push_date": "2026-10-23",
-  "last_push_week": "2026-W43",
-  "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-23T14:22:37"
+  "last_push_date": "2026-11-02",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "confirm",
+  "last_push_ts": "2026-11-02T15:13:32"
  },
  "sh.601001": {
   "last_push_date": "2026-10-23",
@@ -2388,10 +2388,10 @@
   "last_push_ts": "2026-10-27T09:37:08"
  },
  "sh.603161": {
-  "last_push_date": "2026-10-27",
-  "last_push_week": "2026-W44",
-  "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-27T09:37:08"
+  "last_push_date": "2026-11-02",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "confirm",
+  "last_push_ts": "2026-11-02T15:13:32"
  },
  "sh.603337": {
   "last_push_date": "2026-10-27",
@@ -2514,10 +2514,10 @@
   "last_push_ts": "2026-10-27T09:37:08"
  },
  "sz.301592": {
-  "last_push_date": "2026-10-27",
-  "last_push_week": "2026-W44",
-  "last_push_mode": "intraday",
-  "last_push_ts": "2026-10-27T09:37:08"
+  "last_push_date": "2026-11-02",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "confirm",
+  "last_push_ts": "2026-11-02T15:13:32"
  },
  "sh.600617": {
   "last_push_date": "2026-10-27",
@@ -3360,10 +3360,10 @@
   "last_push_ts": "2026-10-30T13:32:16"
  },
  "sz.001328": {
-  "last_push_date": "2026-10-30",
-  "last_push_week": "2026-W44",
+  "last_push_date": "2026-11-02",
+  "last_push_week": "2026-W45",
   "last_push_mode": "confirm",
-  "last_push_ts": "2026-10-30T15:11:55"
+  "last_push_ts": "2026-11-02T15:13:32"
  },
  "sh.600015": {
   "last_push_date": "2026-11-02",
