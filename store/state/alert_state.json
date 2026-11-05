@@ -4408,5 +4408,17 @@
   "last_push_week": "2026-W45",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-11-05T13:32:27"
+ },
+ "sz.000428": {
+  "last_push_date": "2026-11-05",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-05T14:22:42"
+ },
+ "sz.002299": {
+  "last_push_date": "2026-11-05",
+  "last_push_week": "2026-W45",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-05T14:22:42"
  }
 }
