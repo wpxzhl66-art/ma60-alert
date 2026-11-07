@@ -140,6 +140,7 @@
  },
  "2026-11-07": {
   "keys": [
+   "https://finance.sina.com.cn/money/future/fmnews/2026-11-07/doc-inixwthh5080386.shtml",
    "https://finance.sina.com.cn/money/future/wemedia/2026-11-07/doc-inixwnyk5123750.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwakh8379297.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwakk5001971.shtml",
@@ -150,12 +151,16 @@
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwnye4847610.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwnyk5147084.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwtfy8147526.shtml",
+   "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwtfy8168859.shtml",
+   "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwtha4818542.shtml",
+   "https://finance.sina.com.cn/stock/usstock/c/2026-11-07/doc-inixwthh5082356.shtml",
    "https://news.10jqka.com.cn/20261107/c681575645.shtml",
    "https://news.10jqka.com.cn/20261107/c681575702.shtml",
    "https://news.10jqka.com.cn/20261107/c681575720.shtml",
    "https://news.10jqka.com.cn/20261107/c681576168.shtml",
    "https://news.10jqka.com.cn/20261107/c681576221.shtml",
    "https://news.10jqka.com.cn/20261107/c681576566.shtml",
+   "https://news.10jqka.com.cn/20261107/c681576956.shtml",
    "https://www.jin10.com/flash/20261107085442207800",
    "https://www.jin10.com/flash/20261107092058899800",
    "https://www.jin10.com/flash/20261107100111345800",
@@ -163,12 +168,16 @@
    "https://www.jin10.com/flash/20261107105921945800",
    "https://www.jin10.com/flash/20261107112749869800",
    "https://www.jin10.com/flash/20261107120117877800",
-   "https://www.jin10.com/flash/20261107121123526800"
+   "https://www.jin10.com/flash/20261107121123526800",
+   "https://www.jin10.com/flash/20261107121241574800",
+   "https://www.jin10.com/flash/20261107125601364800",
+   "https://www.jin10.com/flash/20261107133258472800"
   ],
   "rounds": [
    "09:35",
    "10:15",
-   "13:30"
+   "13:30",
+   "14:20"
   ]
  }
 }
