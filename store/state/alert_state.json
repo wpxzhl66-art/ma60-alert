@@ -4642,5 +4642,11 @@
   "last_push_week": "2026-W46",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-11-13T13:32:04"
+ },
+ "sh.600019": {
+  "last_push_date": "2026-11-13",
+  "last_push_week": "2026-W46",
+  "last_push_mode": "confirm",
+  "last_push_ts": "2026-11-13T15:11:54"
  }
 }
