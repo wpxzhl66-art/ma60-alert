@@ -168,6 +168,7 @@
    "https://finance.sina.com.cn/stock/hkstock/hkstocknews/2026-11-15/doc-iniyuinm2235629.shtml",
    "https://finance.sina.com.cn/stock/hkstock/hkstocknews/2026-11-15/doc-iniyuinp3473991.shtml",
    "https://finance.sina.com.cn/stock/hkstock/hkstocknews/2026-11-15/doc-iniyupue9774494.shtml",
+   "https://finance.sina.com.cn/stock/hkstock/hkstocknews/2026-11-15/doc-iniyuykf3216101.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuink6675800.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyupue9778704.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyupuh6574565.shtml",
@@ -177,6 +178,7 @@
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuuae6514778.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuuae6531237.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuuaf2063749.shtml",
+   "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuyka6430476.shtml",
    "https://finance.sina.com.cn/stock/usstock/c/2026-11-15/doc-iniyuykf3208928.shtml",
    "https://www.jin10.com/flash/20261115082430862800",
    "https://www.jin10.com/flash/20261115084021953800",
@@ -188,7 +190,8 @@
   "rounds": [
    "09:35",
    "10:15",
-   "13:30"
+   "13:30",
+   "14:20"
   ]
  }
 }
