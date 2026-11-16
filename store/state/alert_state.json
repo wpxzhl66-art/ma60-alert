@@ -216,10 +216,10 @@
   "last_push_ts": "2026-11-09T10:17:05"
  },
  "sz.002216": {
-  "last_push_date": "2026-11-04",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-04T09:37:25"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.002425": {
   "last_push_date": "2026-11-02",
@@ -402,10 +402,10 @@
   "last_push_ts": "2026-10-19T10:56:45"
  },
  "sh.600210": {
-  "last_push_date": "2026-11-04",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-04T13:32:34"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.600251": {
   "last_push_date": "2026-10-16",
@@ -702,10 +702,10 @@
   "last_push_ts": "2026-10-19T10:56:45"
  },
  "sh.600572": {
-  "last_push_date": "2026-11-04",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-04T13:32:34"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.601033": {
   "last_push_date": "2026-10-29",
@@ -726,10 +726,10 @@
   "last_push_ts": "2026-10-19T10:56:45"
  },
  "sh.603170": {
-  "last_push_date": "2026-11-05",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-05T09:37:05"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.603408": {
   "last_push_date": "2026-10-19",
@@ -774,10 +774,10 @@
   "last_push_ts": "2026-11-16T10:17:07"
  },
  "sz.000999": {
-  "last_push_date": "2026-11-13",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-13T13:32:04"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.002099": {
   "last_push_date": "2026-10-19",
@@ -876,10 +876,10 @@
   "last_push_ts": "2026-11-03T09:37:26"
  },
  "sh.603687": {
-  "last_push_date": "2026-11-13",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-13T09:37:12"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.688017": {
   "last_push_date": "2026-10-19",
@@ -1362,10 +1362,10 @@
   "last_push_ts": "2026-11-09T15:12:09"
  },
  "sh.600388": {
-  "last_push_date": "2026-11-02",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-02T10:18:05"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.600511": {
   "last_push_date": "2026-10-26",
@@ -1884,10 +1884,10 @@
   "last_push_ts": "2026-10-26T09:37:06"
  },
  "sz.002520": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.002606": {
   "last_push_date": "2026-10-26",
@@ -3108,10 +3108,10 @@
   "last_push_ts": "2026-11-02T10:18:05"
  },
  "sh.601898": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T10:17:05"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.601956": {
   "last_push_date": "2026-10-29",
@@ -3300,10 +3300,10 @@
   "last_push_ts": "2026-11-02T09:36:49"
  },
  "sz.301175": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T10:17:05"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.301252": {
   "last_push_date": "2026-11-10",
@@ -3372,10 +3372,10 @@
   "last_push_ts": "2026-11-02T09:36:49"
  },
  "sh.600064": {
-  "last_push_date": "2026-11-02",
-  "last_push_week": "2026-W45",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-02T09:36:49"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.600395": {
   "last_push_date": "2026-11-09",
@@ -3438,10 +3438,10 @@
   "last_push_ts": "2026-11-10T09:42:30"
  },
  "sh.603151": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sh.603258": {
   "last_push_date": "2026-11-11",
@@ -3870,10 +3870,10 @@
   "last_push_ts": "2026-11-10T10:17:12"
  },
  "sh.688517": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.000039": {
   "last_push_date": "2026-11-16",
@@ -4458,10 +4458,10 @@
   "last_push_ts": "2026-11-09T09:37:06"
  },
  "sh.601818": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T13:32:22"
+  "last_push_ts": "2026-11-16T13:33:03"
  },
  "sz.000525": {
   "last_push_date": "2026-11-09",
@@ -4672,5 +4672,23 @@
   "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-11-16T10:17:07"
+ },
+ "sz.000860": {
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-16T13:33:03"
+ },
+ "sz.002608": {
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-16T13:33:03"
+ },
+ "sz.002690": {
+  "last_push_date": "2026-11-16",
+  "last_push_week": "2026-W47",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-16T13:33:03"
  }
 }
