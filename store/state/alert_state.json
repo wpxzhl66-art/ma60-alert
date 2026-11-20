@@ -2130,10 +2130,10 @@
   "last_push_ts": "2026-10-23T14:22:37"
  },
  "sz.300556": {
-  "last_push_date": "2026-11-10",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-10T13:32:57"
+  "last_push_ts": "2026-11-20T13:31:54"
  },
  "sz.301018": {
   "last_push_date": "2026-11-02",
@@ -2994,10 +2994,10 @@
   "last_push_ts": "2026-10-28T13:32:38"
  },
  "sz.300426": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-20T13:31:54"
  },
  "sz.300461": {
   "last_push_date": "2026-10-28",
@@ -3822,10 +3822,10 @@
   "last_push_ts": "2026-11-04T09:37:25"
  },
  "sh.600327": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-20T13:31:54"
  },
  "sh.600367": {
   "last_push_date": "2026-11-17",
@@ -4404,10 +4404,10 @@
   "last_push_ts": "2026-11-11T13:32:18"
  },
  "sh.603366": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-20T13:31:54"
  },
  "sz.000428": {
   "last_push_date": "2026-11-05",
@@ -4434,10 +4434,10 @@
   "last_push_ts": "2026-11-09T10:17:05"
  },
  "sz.002982": {
-  "last_push_date": "2026-11-09",
-  "last_push_week": "2026-W46",
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
-  "last_push_ts": "2026-11-09T09:37:06"
+  "last_push_ts": "2026-11-20T13:31:54"
  },
  "sz.003013": {
   "last_push_date": "2026-11-19",
@@ -4738,5 +4738,11 @@
   "last_push_week": "2026-W47",
   "last_push_mode": "intraday",
   "last_push_ts": "2026-11-19T10:16:53"
+ },
+ "sz.301225": {
+  "last_push_date": "2026-11-20",
+  "last_push_week": "2026-W47",
+  "last_push_mode": "intraday",
+  "last_push_ts": "2026-11-20T13:31:54"
  }
 }
